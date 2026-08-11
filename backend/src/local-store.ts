@@ -5,6 +5,17 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import {
+  deriveProjectProgress,
+  PIPELINE_STEP_NAMES,
+  type PipelineRepository,
+  type PipelineStep,
+  type PipelineStepName,
+  type PipelineStepState,
+  type PipelineStepUpdate,
+  type ProjectStatus,
+} from "./pipeline.js";
+
 export interface User {
   id: string;
   name: string;
@@ -15,13 +26,14 @@ export interface ProjectSummary {
   id: string;
   title: string;
   createdAt: string;
-  status: "Draft";
-  completedSteps: 0;
+  status: ProjectStatus;
+  completedSteps: number;
   totalSteps: 5;
 }
 
 export interface ProjectDetail extends ProjectSummary {
   bookText: string;
+  steps: PipelineStep[];
 }
 
 interface UserRow {
@@ -37,22 +49,42 @@ interface ProjectRow {
   created_at: string;
 }
 
+interface PipelineStepRow {
+  step_name: PipelineStepName;
+  position: number;
+  state: PipelineStepState;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+  attempt_count: number;
+}
+
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function projectSummary(row: ProjectRow): ProjectSummary {
+function pipelineStep(row: PipelineStepRow): PipelineStep {
+  return {
+    name: row.step_name,
+    position: row.position,
+    state: row.state,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    errorMessage: row.error_message,
+    attemptCount: row.attempt_count,
+  };
+}
+
+function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary {
   return {
     id: row.id,
     title: row.title,
     createdAt: row.created_at,
-    status: "Draft",
-    completedSteps: 0,
-    totalSteps: 5,
+    ...deriveProjectProgress(steps),
   };
 }
 
-export class LocalStore {
+export class LocalStore implements PipelineRepository {
   private readonly database: Database.Database;
 
   constructor(private readonly dataDirectory: string) {
@@ -85,7 +117,31 @@ export class LocalStore {
         book_path TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS pipeline_steps (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        step_name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'INTERRUPTED')),
+        started_at TEXT,
+        finished_at TEXT,
+        error_message TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (project_id, step_name),
+        UNIQUE (project_id, position)
+      );
     `);
+
+    const backfillStep = this.database.prepare(`
+      INSERT OR IGNORE INTO pipeline_steps (project_id, step_name, position, state)
+      SELECT id, ?, ?, 'PENDING' FROM projects
+    `);
+    const backfillPipeline = this.database.transaction(() => {
+      PIPELINE_STEP_NAMES.forEach((stepName, position) => {
+        backfillStep.run(stepName, position);
+      });
+    });
+    backfillPipeline();
   }
 
   findOrCreateUser(name: string, email: string): User {
@@ -137,7 +193,7 @@ export class LocalStore {
       `)
       .all(userId) as ProjectRow[];
 
-    return rows.map(projectSummary);
+    return rows.map((row) => projectSummary(row, this.getPipelineSteps(row.id)));
   }
 
   async createProject(userId: string, title: string, bookText: string): Promise<ProjectDetail> {
@@ -151,25 +207,34 @@ export class LocalStore {
     await writeFile(absoluteBookPath, bookText, "utf8");
 
     try {
-      this.database
-        .prepare(`
-          INSERT INTO projects (id, user_id, title, book_path, created_at)
-          VALUES (?, ?, ?, ?, ?)
-        `)
-        .run(id, userId, title, relativeBookPath, createdAt);
+      const insertProject = this.database.prepare(`
+        INSERT INTO projects (id, user_id, title, book_path, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      const insertStep = this.database.prepare(`
+        INSERT INTO pipeline_steps (project_id, step_name, position, state)
+        VALUES (?, ?, ?, 'PENDING')
+      `);
+      const persistProject = this.database.transaction(() => {
+        insertProject.run(id, userId, title, relativeBookPath, createdAt);
+        PIPELINE_STEP_NAMES.forEach((stepName, position) => {
+          insertStep.run(id, stepName, position);
+        });
+      });
+      persistProject();
     } catch (error) {
       await rm(projectDirectory, { force: true, recursive: true });
       throw error;
     }
 
+    const steps = this.getPipelineSteps(id);
     return {
-      id,
-      title,
-      createdAt,
-      status: "Draft",
-      completedSteps: 0,
-      totalSteps: 5,
+      ...projectSummary(
+        { id, title, created_at: createdAt, book_path: relativeBookPath },
+        steps,
+      ),
       bookText,
+      steps,
     };
   }
 
@@ -192,10 +257,52 @@ export class LocalStore {
       throw new Error("Stored book path is outside the application data directory");
     }
 
+    const steps = this.getPipelineSteps(projectId);
     return {
-      ...projectSummary(row),
+      ...projectSummary(row, steps),
       bookText: await readFile(absoluteBookPath, "utf8"),
+      steps,
     };
+  }
+
+  getPipelineSteps(projectId: string): PipelineStep[] {
+    const rows = this.database
+      .prepare(`
+        SELECT step_name, position, state, started_at, finished_at, error_message, attempt_count
+        FROM pipeline_steps
+        WHERE project_id = ?
+        ORDER BY position
+      `)
+      .all(projectId) as PipelineStepRow[];
+
+    return rows.map(pipelineStep);
+  }
+
+  updatePipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    update: PipelineStepUpdate,
+  ): void {
+    const result = this.database
+      .prepare(`
+        UPDATE pipeline_steps
+        SET state = ?, started_at = ?, finished_at = ?, error_message = ?,
+            attempt_count = attempt_count + ?
+        WHERE project_id = ? AND step_name = ?
+      `)
+      .run(
+        update.state,
+        update.startedAt,
+        update.finishedAt,
+        update.errorMessage,
+        update.incrementAttempt ? 1 : 0,
+        projectId,
+        stepName,
+      );
+
+    if (result.changes !== 1) {
+      throw new Error(`Pipeline step ${stepName} was not found.`);
+    }
   }
 
   close(): void {

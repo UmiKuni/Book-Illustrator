@@ -71,6 +71,10 @@ describe("identity and project persistence", () => {
       completedSteps: 0,
       totalSteps: 5,
     });
+    expect(created.body.project.steps).toHaveLength(5);
+    expect(
+      created.body.project.steps.every((step: { state: string }) => step.state === "PENDING"),
+    ).toBe(true);
 
     const projectId = created.body.project.id as string;
     const list = await agent.get("/api/projects").expect(200);
