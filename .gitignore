@@ -1,0 +1,19 @@
+# Secrets and local runtime data
+.env
+!.env.example
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# JavaScript/TypeScript tooling
+node_modules/
+dist/
+coverage/
+.vite/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
