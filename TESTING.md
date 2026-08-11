@@ -5,8 +5,9 @@
 Vitest and Supertest cover API behavior without opening a real network port.
 Current tests exercise `GET /health`, identity/session behavior, project
 persistence, validation, ownership isolation, pipeline ordering, persistent
-step transitions, and failure/retry. Duplicate execution, stale recovery, and
-server-side caps will be added with their feature increments.
+step transitions, failure/retry, duplicate execution prevention, and stale
+recovery. Server-side character/chapter caps will be added with their feature
+increments.
 
 ## Frontend
 

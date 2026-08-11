@@ -12,7 +12,7 @@ import {
   type PipelineStep,
   type PipelineStepName,
   type PipelineStepState,
-  type PipelineStepUpdate,
+  type PipelineMutationResult,
   type ProjectStatus,
 } from "./pipeline.js";
 
@@ -96,6 +96,7 @@ export class LocalStore implements PipelineRepository {
     this.database = new Database(databasePath);
     this.database.pragma("foreign_keys = ON");
     this.database.pragma("journal_mode = WAL");
+    this.database.pragma("busy_timeout = 5000");
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -278,31 +279,125 @@ export class LocalStore implements PipelineRepository {
     return rows.map(pipelineStep);
   }
 
-  updatePipelineStep(
+  claimPipelineStep(
     projectId: string,
     stepName: PipelineStepName,
-    update: PipelineStepUpdate,
-  ): void {
-    const result = this.database
+    startedAt: string,
+  ): PipelineMutationResult | undefined {
+    const claim = this.database.transaction(() => {
+      const updated = this.database
+        .prepare(`
+          UPDATE pipeline_steps
+          SET state = 'RUNNING', started_at = ?, finished_at = NULL,
+              error_message = NULL, attempt_count = attempt_count + 1
+          WHERE project_id = ? AND step_name = ?
+            AND state IN ('PENDING', 'FAILED', 'INTERRUPTED')
+            AND NOT EXISTS (
+              SELECT 1
+              FROM pipeline_steps AS previous
+              WHERE previous.project_id = pipeline_steps.project_id
+                AND previous.position < pipeline_steps.position
+                AND previous.state <> 'SUCCEEDED'
+            )
+          RETURNING step_name, position, state, started_at, finished_at,
+                    error_message, attempt_count
+        `)
+        .get(startedAt, projectId, stepName) as PipelineStepRow | undefined;
+
+      if (updated) {
+        return { changed: true, step: pipelineStep(updated) };
+      }
+
+      const current = this.getPipelineStep(projectId, stepName);
+      return current ? { changed: false, step: current } : undefined;
+    });
+
+    return claim();
+  }
+
+  finishPipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    expectedStartedAt: string,
+    state: "SUCCEEDED" | "FAILED",
+    finishedAt: string,
+    errorMessage: string | null,
+  ): PipelineMutationResult | undefined {
+    const finish = this.database.transaction(() => {
+      const updated = this.database
+        .prepare(`
+          UPDATE pipeline_steps
+          SET state = ?, finished_at = ?, error_message = ?
+          WHERE project_id = ? AND step_name = ?
+            AND state = 'RUNNING' AND started_at = ?
+          RETURNING step_name, position, state, started_at, finished_at,
+                    error_message, attempt_count
+        `)
+        .get(
+          state,
+          finishedAt,
+          errorMessage,
+          projectId,
+          stepName,
+          expectedStartedAt,
+        ) as PipelineStepRow | undefined;
+
+      if (updated) {
+        return { changed: true, step: pipelineStep(updated) };
+      }
+
+      const current = this.getPipelineStep(projectId, stepName);
+      return current ? { changed: false, step: current } : undefined;
+    });
+
+    return finish();
+  }
+
+  interruptStalePipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    staleBefore: string,
+    interruptedAt: string,
+  ): PipelineMutationResult | undefined {
+    const interrupt = this.database.transaction(() => {
+      const updated = this.database
+        .prepare(`
+          UPDATE pipeline_steps
+          SET state = 'INTERRUPTED', finished_at = ?,
+              error_message = 'Execution was explicitly recovered after becoming stale.'
+          WHERE project_id = ? AND step_name = ?
+            AND state = 'RUNNING' AND started_at IS NOT NULL AND started_at <= ?
+          RETURNING step_name, position, state, started_at, finished_at,
+                    error_message, attempt_count
+        `)
+        .get(interruptedAt, projectId, stepName, staleBefore) as
+        | PipelineStepRow
+        | undefined;
+
+      if (updated) {
+        return { changed: true, step: pipelineStep(updated) };
+      }
+
+      const current = this.getPipelineStep(projectId, stepName);
+      return current ? { changed: false, step: current } : undefined;
+    });
+
+    return interrupt();
+  }
+
+  private getPipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+  ): PipelineStep | undefined {
+    const row = this.database
       .prepare(`
-        UPDATE pipeline_steps
-        SET state = ?, started_at = ?, finished_at = ?, error_message = ?,
-            attempt_count = attempt_count + ?
+        SELECT step_name, position, state, started_at, finished_at, error_message, attempt_count
+        FROM pipeline_steps
         WHERE project_id = ? AND step_name = ?
       `)
-      .run(
-        update.state,
-        update.startedAt,
-        update.finishedAt,
-        update.errorMessage,
-        update.incrementAttempt ? 1 : 0,
-        projectId,
-        stepName,
-      );
+      .get(projectId, stepName) as PipelineStepRow | undefined;
 
-    if (result.changes !== 1) {
-      throw new Error(`Pipeline step ${stepName} was not found.`);
-    }
+    return row ? pipelineStep(row) : undefined;
   }
 
   close(): void {

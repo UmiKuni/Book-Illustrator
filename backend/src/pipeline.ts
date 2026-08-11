@@ -31,24 +31,51 @@ export interface ProjectProgress {
   totalSteps: 5;
 }
 
-export interface PipelineStepUpdate {
-  state: PipelineStepState;
-  startedAt: string | null;
-  finishedAt: string | null;
-  errorMessage: string | null;
-  incrementAttempt: boolean;
+export interface PipelineMutationResult {
+  changed: boolean;
+  step: PipelineStep;
 }
 
 export interface PipelineRepository {
   getPipelineSteps(projectId: string): PipelineStep[];
-  updatePipelineStep(
+  claimPipelineStep(
     projectId: string,
     stepName: PipelineStepName,
-    update: PipelineStepUpdate,
-  ): void;
+    startedAt: string,
+  ): PipelineMutationResult | undefined;
+  finishPipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    expectedStartedAt: string,
+    state: "SUCCEEDED" | "FAILED",
+    finishedAt: string,
+    errorMessage: string | null,
+  ): PipelineMutationResult | undefined;
+  interruptStalePipelineStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    staleBefore: string,
+    interruptedAt: string,
+  ): PipelineMutationResult | undefined;
 }
 
+export interface PipelineServiceOptions {
+  staleAfterMs?: number;
+  now?: () => Date;
+}
+
+export type PipelineExecutionResult =
+  | { outcome: "SUCCEEDED"; step: PipelineStep }
+  | { outcome: "FAILED"; step: PipelineStep }
+  | { outcome: "ALREADY_RUNNING"; step: PipelineStep };
+
 export class PipelineRuleError extends Error {}
+
+export class PipelineConflictError extends PipelineRuleError {
+  constructor(public readonly step: PipelineStep) {
+    super(`Step ${step.name} is already running.`);
+  }
+}
 
 export function deriveProjectProgress(steps: PipelineStep[]): ProjectProgress {
   const completedSteps = steps.filter((step) => step.state === "SUCCEEDED").length;
@@ -69,7 +96,20 @@ export function deriveProjectProgress(steps: PipelineStep[]): ProjectProgress {
 }
 
 export class PipelineService {
-  constructor(private readonly repository: PipelineRepository) {}
+  private readonly staleAfterMs: number;
+  private readonly now: () => Date;
+
+  constructor(
+    private readonly repository: PipelineRepository,
+    options: PipelineServiceOptions = {},
+  ) {
+    this.staleAfterMs = options.staleAfterMs ?? 300_000;
+    this.now = options.now ?? (() => new Date());
+
+    if (!Number.isFinite(this.staleAfterMs) || this.staleAfterMs < 0) {
+      throw new Error("staleAfterMs must be a non-negative number.");
+    }
+  }
 
   getPipeline(projectId: string): PipelineStep[] {
     const steps = this.repository.getPipelineSteps(projectId);
@@ -80,38 +120,76 @@ export class PipelineService {
   }
 
   startStep(projectId: string, stepName: PipelineStepName): PipelineStep {
-    const steps = this.getPipeline(projectId);
-    const step = this.findStep(steps, stepName);
-    const firstIncomplete = steps.find((candidate) => candidate.state !== "SUCCEEDED");
+    const result = this.repository.claimPipelineStep(
+      projectId,
+      stepName,
+      this.now().toISOString(),
+    );
 
+    if (!result) {
+      throw new PipelineRuleError("Project pipeline was not found.");
+    }
+    if (result.changed) {
+      return result.step;
+    }
+    if (result.step.state === "RUNNING") {
+      throw new PipelineConflictError(result.step);
+    }
+
+    const firstIncomplete = this.getPipeline(projectId).find(
+      (candidate) => candidate.state !== "SUCCEEDED",
+    );
     if (firstIncomplete?.name !== stepName) {
       throw new PipelineRuleError("Previous pipeline steps must succeed first.");
     }
-    if (step.state !== "PENDING" && step.state !== "FAILED") {
-      throw new PipelineRuleError(`Step ${stepName} cannot start from ${step.state}.`);
-    }
 
-    this.repository.updatePipelineStep(projectId, stepName, {
-      state: "RUNNING",
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
-      errorMessage: null,
-      incrementAttempt: true,
-    });
-    return this.findStep(this.getPipeline(projectId), stepName);
+    throw new PipelineRuleError(`Step ${stepName} cannot start from ${result.step.state}.`);
   }
 
-  succeedStep(projectId: string, stepName: PipelineStepName): PipelineStep {
-    return this.finishStep(projectId, stepName, "SUCCEEDED", null);
+  succeedStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    expectedStartedAt?: string,
+  ): PipelineStep {
+    return this.finishStep(projectId, stepName, "SUCCEEDED", null, expectedStartedAt);
   }
 
-  failStep(projectId: string, stepName: PipelineStepName, errorMessage: string): PipelineStep {
+  failStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    errorMessage: string,
+    expectedStartedAt?: string,
+  ): PipelineStep {
     return this.finishStep(
       projectId,
       stepName,
       "FAILED",
       errorMessage.trim() || "Step failed.",
+      expectedStartedAt,
     );
+  }
+
+  recoverStep(projectId: string, stepName: PipelineStepName): PipelineStep {
+    const now = this.now();
+    const staleBefore = new Date(now.getTime() - this.staleAfterMs).toISOString();
+    const result = this.repository.interruptStalePipelineStep(
+      projectId,
+      stepName,
+      staleBefore,
+      now.toISOString(),
+    );
+
+    if (!result) {
+      throw new PipelineRuleError("Project pipeline was not found.");
+    }
+    if (result.changed) {
+      return result.step;
+    }
+    if (result.step.state === "RUNNING") {
+      throw new PipelineRuleError(`Step ${stepName} is still running and is not stale.`);
+    }
+
+    throw new PipelineRuleError(`Step ${stepName} cannot be recovered from ${result.step.state}.`);
   }
 
   private finishStep(
@@ -119,20 +197,30 @@ export class PipelineService {
     stepName: PipelineStepName,
     state: "SUCCEEDED" | "FAILED",
     errorMessage: string | null,
+    expectedStartedAt?: string,
   ): PipelineStep {
-    const step = this.findStep(this.getPipeline(projectId), stepName);
-    if (step.state !== "RUNNING") {
-      throw new PipelineRuleError(`Step ${stepName} cannot finish from ${step.state}.`);
+    const currentStep = this.findStep(this.getPipeline(projectId), stepName);
+    const startedAt = expectedStartedAt ?? currentStep.startedAt;
+
+    if (currentStep.state !== "RUNNING" || !startedAt) {
+      throw new PipelineRuleError(`Step ${stepName} cannot finish from ${currentStep.state}.`);
     }
 
-    this.repository.updatePipelineStep(projectId, stepName, {
+    const result = this.repository.finishPipelineStep(
+      projectId,
+      stepName,
+      startedAt,
       state,
-      startedAt: step.startedAt,
-      finishedAt: new Date().toISOString(),
+      this.now().toISOString(),
       errorMessage,
-      incrementAttempt: false,
-    });
-    return this.findStep(this.getPipeline(projectId), stepName);
+    );
+    if (!result) {
+      throw new PipelineRuleError("Project pipeline was not found.");
+    }
+    if (!result.changed) {
+      throw new PipelineRuleError(`Step ${stepName} no longer belongs to this execution.`);
+    }
+    return result.step;
   }
 
   private findStep(steps: PipelineStep[], stepName: PipelineStepName): PipelineStep {
@@ -141,5 +229,44 @@ export class PipelineService {
       throw new PipelineRuleError(`Pipeline step ${stepName} was not found.`);
     }
     return step;
+  }
+}
+
+export class PipelineExecutor {
+  constructor(private readonly pipeline: PipelineService) {}
+
+  async executeStep(
+    projectId: string,
+    stepName: PipelineStepName,
+    work: (runningStep: PipelineStep) => Promise<void>,
+  ): Promise<PipelineExecutionResult> {
+    let runningStep: PipelineStep;
+    try {
+      runningStep = this.pipeline.startStep(projectId, stepName);
+    } catch (error) {
+      if (error instanceof PipelineConflictError) {
+        return { outcome: "ALREADY_RUNNING", step: error.step };
+      }
+      throw error;
+    }
+
+    try {
+      await work(runningStep);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Step failed.";
+      return {
+        outcome: "FAILED",
+        step: this.pipeline.failStep(projectId, stepName, message, runningStep.startedAt ?? undefined),
+      };
+    }
+
+    return {
+      outcome: "SUCCEEDED",
+      step: this.pipeline.succeedStep(
+        projectId,
+        stepName,
+        runningStep.startedAt ?? undefined,
+      ),
+    };
   }
 }
