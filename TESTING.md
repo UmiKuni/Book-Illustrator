@@ -2,10 +2,11 @@
 
 ## Backend
 
-Vitest and Supertest cover API and pipeline behavior without opening a real
-network port. The current smoke test exercises `GET /health`; ordering,
-duplicate execution, persistence, failure/retry, recovery, and server-side caps
-will be added with their feature increments.
+Vitest and Supertest cover API behavior without opening a real network port.
+Current tests exercise `GET /health`, identity/session behavior, project
+persistence, validation, and ownership isolation. Pipeline ordering, duplicate
+execution, failure/retry, recovery, and server-side caps will be added with
+their feature increments.
 
 ## Frontend
 
