@@ -1,28 +1,26 @@
 # Testing Strategy
 
 ## Backend
-Planned:
-- pipeline ordering
-- duplicate execution
-- persistence
-- failure/retry
-- stranded work recovery
-- server-side caps
+
+Vitest and Supertest cover API and pipeline behavior without opening a real
+network port. The current smoke test exercises `GET /health`; ordering,
+duplicate execution, persistence, failure/retry, recovery, and server-side caps
+will be added with their feature increments.
 
 ## Frontend
-Planned:
-- empty state
-- running state
-- error/retry state
-- recovery state
-- incremental portrait progress
+
+Vitest, React Testing Library, jest-dom, and jsdom cover component behavior and
+meaningful UI states. The current scaffold has a rendering smoke test; empty,
+running, error/retry, recovery, and portrait-progress tests will accompany those
+features.
 
 ## Gemini
-Automated tests use a fake Gemini adapter.
-Live API verification is manual/opt-in.
 
-## Deliberately Not Tested
-_To be refined as implementation evolves._
+Automated tests do not require a Gemini API key or make live Gemini calls. A
+fake Gemini adapter and provider-dependent behavioral tests are deferred until
+the integration increment. Live verification remains manual and opt-in.
 
 ## Test Report
-_To be populated from an actual test run._
+
+The final real test output will be recorded after the required feature tests
+are implemented. No final report is claimed by this harness increment.
