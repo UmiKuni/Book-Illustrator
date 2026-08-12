@@ -5,6 +5,11 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import type {
+  Character,
+  CharacterProjectContext,
+  CharacterRepository,
+} from "./characters.js";
 import {
   deriveProjectProgress,
   PIPELINE_STEP_NAMES,
@@ -34,6 +39,7 @@ export interface ProjectSummary {
 export interface ProjectDetail extends ProjectSummary {
   bookText: string;
   style: string | null;
+  characters: Character[];
   steps: PipelineStep[];
 }
 
@@ -52,6 +58,18 @@ interface ProjectRow {
 
 interface ProjectDetailRow extends ProjectRow {
   style: string | null;
+}
+
+interface CharacterProjectRow {
+  id: string;
+  style_interaction_id: string | null;
+  character_interaction_id: string | null;
+}
+
+interface CharacterRow {
+  position: number;
+  name: string;
+  prompt: string;
 }
 
 interface StyleProjectRow {
@@ -102,7 +120,7 @@ function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary 
   };
 }
 
-export class LocalStore implements StyleRepository {
+export class LocalStore implements StyleRepository, CharacterRepository {
   private readonly database: Database.Database;
 
   constructor(private readonly dataDirectory: string) {
@@ -138,7 +156,16 @@ export class LocalStore implements StyleRepository {
         book_interaction_id TEXT,
         style TEXT,
         style_interaction_id TEXT,
+        character_interaction_id TEXT,
         created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS characters (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position >= 0 AND position < 2),
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        PRIMARY KEY (project_id, position)
       );
 
       CREATE TABLE IF NOT EXISTS pipeline_steps (
@@ -159,6 +186,7 @@ export class LocalStore implements StyleRepository {
     this.ensureProjectColumn("book_interaction_id", "TEXT");
     this.ensureProjectColumn("style", "TEXT");
     this.ensureProjectColumn("style_interaction_id", "TEXT");
+    this.ensureProjectColumn("character_interaction_id", "TEXT");
 
     const backfillStep = this.database.prepare(`
       INSERT OR IGNORE INTO pipeline_steps (project_id, step_name, position, state)
@@ -263,6 +291,7 @@ export class LocalStore implements StyleRepository {
       ),
       bookText,
       style: null,
+      characters: [],
       steps,
     };
   }
@@ -287,6 +316,7 @@ export class LocalStore implements StyleRepository {
       ...projectSummary(row, steps),
       bookText: await readFile(absoluteBookPath, "utf8"),
       style: row.style,
+      characters: this.getCharacters(projectId),
       steps,
     };
   }
@@ -343,6 +373,59 @@ export class LocalStore implements StyleRepository {
         WHERE id = ?
       `)
       .run(style, interactionId, projectId);
+  }
+
+  getCharacterProject(
+    userId: string,
+    projectId: string,
+  ): CharacterProjectContext | undefined {
+    const row = this.database
+      .prepare(`
+        SELECT id, style_interaction_id, character_interaction_id
+        FROM projects
+        WHERE id = ? AND user_id = ?
+      `)
+      .get(projectId, userId) as CharacterProjectRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id,
+      styleInteractionId: row.style_interaction_id,
+      characterInteractionId: row.character_interaction_id,
+      characters: this.getCharacters(projectId),
+    };
+  }
+
+  saveCharacters(
+    projectId: string,
+    characters: Character[],
+    interactionId: string,
+  ): void {
+    const removeExisting = this.database.prepare("DELETE FROM characters WHERE project_id = ?");
+    const insertCharacter = this.database.prepare(`
+      INSERT INTO characters (project_id, position, name, prompt)
+      VALUES (?, ?, ?, ?)
+    `);
+    const updateContext = this.database.prepare(`
+      UPDATE projects
+      SET character_interaction_id = ?
+      WHERE id = ?
+    `);
+
+    const persist = this.database.transaction(() => {
+      removeExisting.run(projectId);
+      for (const character of characters) {
+        insertCharacter.run(projectId, character.position, character.name, character.prompt);
+      }
+      const updated = updateContext.run(interactionId, projectId);
+      if (updated.changes !== 1) {
+        throw new Error("Project was not found while saving Characters.");
+      }
+    });
+    persist();
   }
 
   getPipelineSteps(projectId: string): PipelineStep[] {
@@ -486,6 +569,23 @@ export class LocalStore implements StyleRepository {
       throw new Error("Stored book path is outside the application data directory");
     }
     return absoluteBookPath;
+  }
+
+  private getCharacters(projectId: string): Character[] {
+    const rows = this.database
+      .prepare(`
+        SELECT position, name, prompt
+        FROM characters
+        WHERE project_id = ?
+        ORDER BY position
+      `)
+      .all(projectId) as CharacterRow[];
+
+    return rows.map((row) => ({
+      position: row.position,
+      name: row.name,
+      prompt: row.prompt,
+    }));
   }
 
   private ensureProjectColumn(name: string, definition: string): void {

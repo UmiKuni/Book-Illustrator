@@ -8,7 +8,9 @@ persistence, validation, ownership isolation, pipeline ordering, persistent
 step transitions, failure/retry, duplicate execution prevention, and stale
 recovery. Style tests use a deterministic fake Gemini provider to cover book
 context reuse, persistence, provider failure, and overlapping requests.
-Server-side character/chapter caps will be added with their feature increments.
+Character tests cover structured-output validation, the server-side two-record
+cap, context reuse, persistence, retry, ownership, and duplicate prevention.
+The chapter cap will be added with its feature increment.
 
 ## Frontend
 

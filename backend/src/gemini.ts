@@ -4,6 +4,27 @@ const BOOK_CONTEXT_PROMPT =
   "Here's a book, to illustrate using Nano Banana. Don't say anything for now, instructions will follow.";
 const GENERATED_STYLE_PROMPT =
   "Can you define an art style that would fit the story but with a twist? Just give us the prompt for the art style that will be added to future prompts.";
+const CHARACTER_PROMPT =
+  "Describe the main characters from the book, only the adults, and prepare a detailed image prompt for each one using the book's descriptions. Each prompt should be at least 50 words.";
+
+const CHARACTER_RESPONSE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "The adult main character's name.",
+      },
+      prompt: {
+        type: "string",
+        description: "A detailed image-generation prompt based on the book.",
+      },
+    },
+    required: ["name", "prompt"],
+    additionalProperties: false,
+  },
+} as const;
 
 export interface GeminiBookReference {
   uri: string;
@@ -17,6 +38,10 @@ export interface GeminiGeneratedStyle extends GeminiInteractionReference {
   style: string;
 }
 
+export interface GeminiCharacterOutput extends GeminiInteractionReference {
+  outputText: string | undefined;
+}
+
 export interface GeminiProvider {
   uploadBook(bookPath: string): Promise<GeminiBookReference>;
   createBookInteraction(bookUri: string): Promise<GeminiInteractionReference>;
@@ -25,6 +50,7 @@ export interface GeminiProvider {
     bookInteractionId: string,
     style: string,
   ): Promise<GeminiInteractionReference>;
+  generateCharacters(styleInteractionId: string): Promise<GeminiCharacterOutput>;
 }
 
 export interface GoogleGeminiProviderOptions {
@@ -92,6 +118,24 @@ export class GoogleGeminiProvider implements GeminiProvider {
 
     return {
       interactionId: requiredProviderString(interaction.id, "Style interaction ID"),
+    };
+  }
+
+  async generateCharacters(styleInteractionId: string): Promise<GeminiCharacterOutput> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.textModel,
+      input: CHARACTER_PROMPT,
+      previous_interaction_id: styleInteractionId,
+      response_format: {
+        type: "text",
+        mime_type: "application/json",
+        schema: CHARACTER_RESPONSE_SCHEMA,
+      },
+    });
+
+    return {
+      interactionId: requiredProviderString(interaction.id, "Characters interaction ID"),
+      outputText: interaction.output_text,
     };
   }
 
