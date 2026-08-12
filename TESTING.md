@@ -6,8 +6,9 @@ Vitest and Supertest cover API behavior without opening a real network port.
 Current tests exercise `GET /health`, identity/session behavior, project
 persistence, validation, ownership isolation, pipeline ordering, persistent
 step transitions, failure/retry, duplicate execution prevention, and stale
-recovery. Server-side character/chapter caps will be added with their feature
-increments.
+recovery. Style tests use a deterministic fake Gemini provider to cover book
+context reuse, persistence, provider failure, and overlapping requests.
+Server-side character/chapter caps will be added with their feature increments.
 
 ## Frontend
 
@@ -19,8 +20,8 @@ features.
 ## Gemini
 
 Automated tests do not require a Gemini API key or make live Gemini calls. A
-fake Gemini adapter and provider-dependent behavioral tests are deferred until
-the integration increment. Live verification remains manual and opt-in.
+fake Gemini provider covers integration behavior at the application boundary.
+Live provider verification remains manual and opt-in.
 
 ## Test Report
 

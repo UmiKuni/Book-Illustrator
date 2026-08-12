@@ -8,13 +8,13 @@ import Database from "better-sqlite3";
 import {
   deriveProjectProgress,
   PIPELINE_STEP_NAMES,
-  type PipelineRepository,
   type PipelineStep,
   type PipelineStepName,
   type PipelineStepState,
   type PipelineMutationResult,
   type ProjectStatus,
 } from "./pipeline.js";
+import type { StyleProjectContext, StyleRepository } from "./style.js";
 
 export interface User {
   id: string;
@@ -33,6 +33,7 @@ export interface ProjectSummary {
 
 export interface ProjectDetail extends ProjectSummary {
   bookText: string;
+  style: string | null;
   steps: PipelineStep[];
 }
 
@@ -47,6 +48,23 @@ interface ProjectRow {
   title: string;
   book_path: string;
   created_at: string;
+}
+
+interface ProjectDetailRow extends ProjectRow {
+  style: string | null;
+}
+
+interface StyleProjectRow {
+  id: string;
+  book_path: string;
+  gemini_book_uri: string | null;
+  book_interaction_id: string | null;
+  style: string | null;
+  style_interaction_id: string | null;
+}
+
+interface TableColumnRow {
+  name: string;
 }
 
 interface PipelineStepRow {
@@ -84,7 +102,7 @@ function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary 
   };
 }
 
-export class LocalStore implements PipelineRepository {
+export class LocalStore implements StyleRepository {
   private readonly database: Database.Database;
 
   constructor(private readonly dataDirectory: string) {
@@ -116,6 +134,10 @@ export class LocalStore implements PipelineRepository {
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT NOT NULL,
         book_path TEXT NOT NULL,
+        gemini_book_uri TEXT,
+        book_interaction_id TEXT,
+        style TEXT,
+        style_interaction_id TEXT,
         created_at TEXT NOT NULL
       );
 
@@ -132,6 +154,11 @@ export class LocalStore implements PipelineRepository {
         UNIQUE (project_id, position)
       );
     `);
+
+    this.ensureProjectColumn("gemini_book_uri", "TEXT");
+    this.ensureProjectColumn("book_interaction_id", "TEXT");
+    this.ensureProjectColumn("style", "TEXT");
+    this.ensureProjectColumn("style_interaction_id", "TEXT");
 
     const backfillStep = this.database.prepare(`
       INSERT OR IGNORE INTO pipeline_steps (project_id, step_name, position, state)
@@ -235,6 +262,7 @@ export class LocalStore implements PipelineRepository {
         steps,
       ),
       bookText,
+      style: null,
       steps,
     };
   }
@@ -242,28 +270,79 @@ export class LocalStore implements PipelineRepository {
   async getProject(userId: string, projectId: string): Promise<ProjectDetail | undefined> {
     const row = this.database
       .prepare(`
-        SELECT id, title, book_path, created_at
+        SELECT id, title, book_path, created_at, style
         FROM projects
         WHERE id = ? AND user_id = ?
       `)
-      .get(projectId, userId) as ProjectRow | undefined;
+      .get(projectId, userId) as ProjectDetailRow | undefined;
 
     if (!row) {
       return undefined;
     }
 
-    const absoluteBookPath = path.resolve(this.dataDirectory, row.book_path);
-    const dataRoot = `${this.dataDirectory}${path.sep}`;
-    if (!absoluteBookPath.startsWith(dataRoot)) {
-      throw new Error("Stored book path is outside the application data directory");
-    }
+    const absoluteBookPath = this.resolveBookPath(row.book_path);
 
     const steps = this.getPipelineSteps(projectId);
     return {
       ...projectSummary(row, steps),
       bookText: await readFile(absoluteBookPath, "utf8"),
+      style: row.style,
       steps,
     };
+  }
+
+  getStyleProject(userId: string, projectId: string): StyleProjectContext | undefined {
+    const row = this.database
+      .prepare(`
+        SELECT id, book_path, gemini_book_uri, book_interaction_id, style,
+               style_interaction_id
+        FROM projects
+        WHERE id = ? AND user_id = ?
+      `)
+      .get(projectId, userId) as StyleProjectRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id,
+      bookPath: this.resolveBookPath(row.book_path),
+      geminiBookUri: row.gemini_book_uri,
+      bookInteractionId: row.book_interaction_id,
+      style: row.style,
+      styleInteractionId: row.style_interaction_id,
+    };
+  }
+
+  saveGeminiBookUri(projectId: string, bookUri: string): void {
+    this.database
+      .prepare(`
+        UPDATE projects
+        SET gemini_book_uri = COALESCE(gemini_book_uri, ?)
+        WHERE id = ?
+      `)
+      .run(bookUri, projectId);
+  }
+
+  saveBookInteractionId(projectId: string, interactionId: string): void {
+    this.database
+      .prepare(`
+        UPDATE projects
+        SET book_interaction_id = COALESCE(book_interaction_id, ?)
+        WHERE id = ?
+      `)
+      .run(interactionId, projectId);
+  }
+
+  saveStyle(projectId: string, style: string, interactionId: string): void {
+    this.database
+      .prepare(`
+        UPDATE projects
+        SET style = ?, style_interaction_id = ?
+        WHERE id = ?
+      `)
+      .run(style, interactionId, projectId);
   }
 
   getPipelineSteps(projectId: string): PipelineStep[] {
@@ -398,6 +477,22 @@ export class LocalStore implements PipelineRepository {
       .get(projectId, stepName) as PipelineStepRow | undefined;
 
     return row ? pipelineStep(row) : undefined;
+  }
+
+  private resolveBookPath(relativeBookPath: string): string {
+    const absoluteBookPath = path.resolve(this.dataDirectory, relativeBookPath);
+    const dataRoot = `${this.dataDirectory}${path.sep}`;
+    if (!absoluteBookPath.startsWith(dataRoot)) {
+      throw new Error("Stored book path is outside the application data directory");
+    }
+    return absoluteBookPath;
+  }
+
+  private ensureProjectColumn(name: string, definition: string): void {
+    const columns = this.database.prepare("PRAGMA table_info(projects)").all() as TableColumnRow[];
+    if (!columns.some((column) => column.name === name)) {
+      this.database.exec(`ALTER TABLE projects ADD COLUMN ${name} ${definition}`);
+    }
   }
 
   close(): void {
