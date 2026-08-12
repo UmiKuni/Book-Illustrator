@@ -1,42 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  BrowserRouter,
-  Link,
   Navigate,
-  Outlet,
   Route,
   Routes,
-  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom'
 
-import './App.css'
-import {
-  IdentityPage,
-  NewProjectPage,
-  ProjectLibraryPage,
-} from './ApplicationPages'
-import { ProjectDetailPage } from './ProjectDetailPage'
-import {
-  ApiError,
-  endSession,
-  listProjects,
-  type ProjectDetail,
-  type ProjectSummary,
-} from './api'
+import { IdentityPage } from '../features/auth/IdentityPage'
+import { NewProjectPage } from '../features/projects/NewProjectPage'
+import { ProjectDetailPage } from '../features/projects/ProjectDetailPage'
+import { ProjectLibraryPage } from '../features/projects/ProjectLibraryPage'
+import { listProjects } from '../features/projects/projects.api'
+import type { ProjectDetail, ProjectSummary } from '../features/projects/projects.types'
+import { ApiError } from '../shared/api/client'
+import { AuthenticatedShell } from './AuthenticatedShell'
 
 type BootstrapState = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
 
-function App() {
-  return (
-    <BrowserRouter>
-      <ApplicationRoutes />
-    </BrowserRouter>
-  )
-}
-
-function ApplicationRoutes() {
+export function AppRoutes() {
   const navigate = useNavigate()
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>('loading')
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -115,13 +97,7 @@ function ApplicationRoutes() {
 
   return (
     <Routes>
-      <Route
-        element={
-          <AuthenticatedShell
-            onSignedOut={handleUnauthorized}
-          />
-        }
-      >
+      <Route element={<AuthenticatedShell onSignedOut={handleUnauthorized} />}>
         <Route index element={<Navigate replace to="/projects" />} />
         <Route
           path="projects"
@@ -152,67 +128,12 @@ function ApplicationRoutes() {
   )
 }
 
-function AuthenticatedShell({ onSignedOut }: { onSignedOut: () => void }) {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [signingOut, setSigningOut] = useState(false)
-  const [signOutError, setSignOutError] = useState<string | null>(null)
-
-  async function signOut() {
-    if (signingOut) return
-    setSigningOut(true)
-    setSignOutError(null)
-    try {
-      await endSession()
-      onSignedOut()
-      navigate('/', { replace: true })
-    } catch (error) {
-      setSignOutError(error instanceof Error ? error.message : 'Could not sign out. Please try again.')
-    } finally {
-      setSigningOut(false)
-    }
-  }
-
-  return (
-    <div className="studio-shell">
-      <header className="studio-header app-header">
-        <Link className="brand" to="/projects" aria-label="Book Illustration Studio projects">
-          <span className="brand-mark" aria-hidden="true">B</span>
-          <span>
-            <strong>Book Illustration</strong>
-            <small>Studio</small>
-          </span>
-        </Link>
-        <nav className="app-navigation" aria-label="Primary navigation">
-          <Link className={location.pathname === '/projects' ? 'active' : ''} to="/projects">Projects</Link>
-          <Link className={location.pathname === '/projects/new' ? 'active' : ''} to="/projects/new">New project</Link>
-          <button type="button" onClick={() => void signOut()} disabled={signingOut}>
-            {signingOut ? 'Signing out…' : 'Sign out'}
-          </button>
-        </nav>
-      </header>
-      {signOutError && (
-        <div className="shell-error" role="alert">
-          <span>{signOutError}</span>
-          <button type="button" onClick={() => setSignOutError(null)} aria-label="Dismiss sign-out error">×</button>
-        </div>
-      )}
-      <Outlet />
-    </div>
-  )
-}
-
 function RoutedProjectDetail({ onUnauthorized }: { onUnauthorized: () => void }) {
   const { projectId } = useParams()
 
   if (!projectId) return <Navigate replace to="/projects" />
 
-  return (
-    <ProjectDetailPage
-      projectId={projectId}
-      onUnauthorized={onUnauthorized}
-    />
-  )
+  return <ProjectDetailPage projectId={projectId} onUnauthorized={onUnauthorized} />
 }
 
 function ApplicationLoading() {
@@ -236,5 +157,3 @@ function ApplicationError({ message, onRetry }: { message: string | null; onRetr
     </main>
   )
 }
-
-export default App

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
-import { ProjectDetailPage } from './ProjectDetailPage'
+import { ProjectDetailPage } from './features/projects/ProjectDetailPage'
 import {
   PIPELINE_STEP_NAMES,
   type Character,
@@ -11,7 +11,7 @@ import {
   type PipelineStepName,
   type PipelineStepState,
   type ProjectDetail,
-} from './api'
+} from './features/projects/projects.types'
 
 function response(body: unknown, status = 200): Response {
   return {

@@ -1,0 +1,119 @@
+.identity-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 48px;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(201, 87, 42, 0.16), transparent 31rem),
+    linear-gradient(rgba(111, 91, 68, 0.035) 1px, transparent 1px),
+    var(--paper);
+  background-size: auto, 100% 32px, auto;
+}
+
+.identity-card {
+  display: grid;
+  overflow: hidden;
+  width: min(1000px, 100%);
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.identity-intro {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(42px, 7vw, 82px);
+  background:
+    linear-gradient(135deg, rgba(255, 253, 248, 0.94), rgba(247, 223, 207, 0.78)),
+    var(--accent-soft);
+}
+
+.identity-intro::after {
+  position: absolute;
+  right: -80px;
+  bottom: -120px;
+  width: 300px;
+  height: 360px;
+  border: 1px solid rgba(201, 87, 42, 0.23);
+  border-radius: 6px 30px 30px 6px;
+  box-shadow: inset 20px 0 0 rgba(201, 87, 42, 0.08);
+  content: '';
+  transform: rotate(-12deg);
+}
+
+.identity-intro > * {
+  position: relative;
+  z-index: 1;
+}
+
+.identity-intro h1 {
+  max-width: 540px;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+}
+
+.identity-intro > p {
+  max-width: 490px;
+  margin: 24px 0 0;
+  color: var(--ink-soft);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.identity-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(36px, 6vw, 66px);
+  border-left: 1px solid var(--line);
+}
+
+.form-heading {
+  margin-bottom: 26px;
+}
+
+.form-heading h2 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.form-heading p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+
+@media (max-width: 780px) {
+  .identity-page {
+    padding: 22px;
+  }
+
+  .identity-card {
+    grid-template-columns: 1fr;
+  }
+
+  .identity-intro {
+    padding: 42px 30px;
+  }
+
+  .identity-intro h1 {
+    font-size: clamp(2.8rem, 13vw, 4.4rem);
+  }
+
+  .identity-form {
+    padding: 38px 30px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
