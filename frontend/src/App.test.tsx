@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 
 import { ProjectDetailPage } from './ProjectDetailPage'
 import {
@@ -89,6 +90,14 @@ function mockProject(value: ProjectDetail) {
   return fetchMock
 }
 
+function renderProjectDetail() {
+  return render(
+    <MemoryRouter>
+      <ProjectDetailPage projectId="project-1" />
+    </MemoryRouter>,
+  )
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -114,7 +123,7 @@ describe('project pipeline', () => {
     })
     mockProject(value)
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'The Lantern Atlas' })).toBeInTheDocument()
     expect(screen.getByText(/Luminous gouache/)).toBeInTheDocument()
@@ -139,7 +148,7 @@ describe('project pipeline', () => {
       }),
     }))
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
 
     const runningButton = await screen.findByRole('button', { name: /Generating Portraits/ })
     expect(runningButton).toBeDisabled()
@@ -157,7 +166,7 @@ describe('project pipeline', () => {
       ),
     }))
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
 
     expect(await screen.findByRole('button', { name: 'Retry Characters' })).toBeEnabled()
     expect(screen.getByText('Gemini returned malformed character data.')).toBeInTheDocument()
@@ -174,7 +183,7 @@ describe('project pipeline', () => {
       }),
     }))
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
 
     const completedPortrait = await screen.findByRole('img', { name: 'Ada Vale portrait' })
     expect(completedPortrait).toHaveAttribute(
@@ -213,7 +222,7 @@ describe('project pipeline', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
     fireEvent.click(await screen.findByRole('button', { name: 'Recover stranded Portraits' }))
 
     expect(await screen.findByRole('button', { name: 'Retry Portraits' })).toBeEnabled()
@@ -241,7 +250,7 @@ describe('project pipeline', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
     fireEvent.click(await screen.findByRole('button', { name: 'Recover stranded Portraits' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -268,7 +277,7 @@ describe('project pipeline', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ProjectDetailPage projectId="project-1" />)
+    renderProjectDetail()
     fireEvent.change(await screen.findByLabelText('Optional art direction'), {
       target: { value: '  Woodcut lines with a quiet amber palette.  ' },
     })

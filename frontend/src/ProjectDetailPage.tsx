@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   ApiError,
@@ -54,6 +55,7 @@ const STEP_COPY: Record<
 
 interface ProjectDetailPageProps {
   projectId: string
+  onUnauthorized?: () => void
 }
 
 interface Feedback {
@@ -91,7 +93,7 @@ function messageFor(error: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
-export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
+export function ProjectDetailPage({ projectId, onUnauthorized }: ProjectDetailPageProps) {
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [fatalError, setFatalError] = useState<string | null>(null)
@@ -118,6 +120,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         setFatalError(null)
       } catch (error) {
         if (!mounted.current) return
+        if (error instanceof ApiError && error.status === 401 && onUnauthorized) {
+          onUnauthorized()
+          return
+        }
         const text = messageFor(error)
         if (background || projectRef.current) {
           setFeedback({ tone: 'error', text: `Could not refresh the project. ${text}` })
@@ -128,7 +134,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         if (mounted.current && !background) setLoading(false)
       }
     },
-    [projectId],
+    [onUnauthorized, projectId],
   )
 
   useEffect(() => {
@@ -142,7 +148,12 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         setFatalError(null)
       })
       .catch((error: unknown) => {
-        if (!cancelled) setFatalError(messageFor(error))
+        if (cancelled) return
+        if (error instanceof ApiError && error.status === 401 && onUnauthorized) {
+          onUnauthorized()
+          return
+        }
+        setFatalError(messageFor(error))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -151,7 +162,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [onUnauthorized, projectId])
 
   const runningStep = project?.steps.find((step) => step.state === 'RUNNING')
   const shouldPoll = Boolean(runningStep) || pendingAction === 'run'
@@ -177,6 +188,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       await runPipelineStep(projectId, activeStep.name, suppliedStyle)
       await refreshProject(true)
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401 && onUnauthorized) {
+        onUnauthorized()
+        return
+      }
       await refreshProject(true)
       if (mounted.current) setFeedback({ tone: 'error', text: messageFor(error) })
     } finally {
@@ -198,6 +213,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         })
       }
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401 && onUnauthorized) {
+        onUnauthorized()
+        return
+      }
       await refreshProject(true)
       if (mounted.current) setFeedback({ tone: 'error', text: messageFor(error) })
     } finally {
@@ -223,20 +242,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   }
 
   return (
-    <div className="studio-shell">
-      <header className="studio-header">
-        <a className="brand" href="/" aria-label="Book Illustration Studio home">
-          <span className="brand-mark" aria-hidden="true">B</span>
-          <span>
-            <strong>Book Illustration</strong>
-            <small>Studio</small>
-          </span>
-        </a>
+    <div className="project-detail-view">
+      <div className="detail-context-bar">
+        <Link className="back-link" to="/projects"><span aria-hidden="true">←</span> Project library</Link>
         <div className="project-status" aria-label={`${project.completedSteps} of ${project.totalSteps} steps complete`}>
           <span className={`status-dot status-${project.status.toLowerCase().replace(' ', '-')}`} />
           {project.status} · {project.completedSteps}/{project.totalSteps}
         </div>
-      </header>
+      </div>
 
       <main className="project-page">
         <section className="project-hero" aria-labelledby="project-title">

@@ -44,18 +44,29 @@ export interface Chapter {
   illustrationMimeType: string | null
 }
 
-export interface ProjectDetail {
+export type ProjectStatus = 'Draft' | 'In progress' | 'Done'
+
+export interface ProjectSummary {
   id: string
   title: string
   createdAt: string
-  status: 'Draft' | 'In progress' | 'Done'
+  status: ProjectStatus
   completedSteps: number
   totalSteps: 5
+}
+
+export interface ProjectDetail extends ProjectSummary {
   bookText: string
   style: string | null
   characters: Character[]
   chapters: Chapter[]
   steps: PipelineStep[]
+}
+
+export interface SessionUser {
+  id: string
+  name: string
+  email: string
 }
 
 interface ErrorResponse {
@@ -85,11 +96,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
 
-  let body: unknown = null
-  try {
-    body = await response.json()
-  } catch {
-    // A non-JSON error is still reported with its HTTP status below.
+  let body: unknown
+  if (response.status !== 204) {
+    try {
+      body = await response.json()
+    } catch {
+      body = null
+      // A non-JSON error is still reported with its HTTP status below.
+    }
   }
 
   if (!response.ok) {
@@ -112,6 +126,51 @@ export async function getProject(projectId: string): Promise<ProjectDetail> {
   const response = await requestJson<{ project: ProjectDetail }>(
     `/api/projects/${encodeURIComponent(projectId)}`,
   )
+  return response.project
+}
+
+export async function startSession(name: string, email: string): Promise<SessionUser> {
+  const response = await requestJson<{ user: SessionUser }>('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email }),
+  })
+  return response.user
+}
+
+export async function endSession(): Promise<void> {
+  await requestJson<void>('/api/session', { method: 'DELETE' })
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const response = await requestJson<{ projects: ProjectSummary[] }>('/api/projects')
+  return response.projects
+}
+
+export async function createProjectFromText(
+  title: string,
+  bookText: string,
+): Promise<ProjectDetail> {
+  const response = await requestJson<{ project: ProjectDetail }>('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, bookText }),
+  })
+  return response.project
+}
+
+export async function createProjectFromFile(
+  title: string,
+  book: File,
+): Promise<ProjectDetail> {
+  const body = new FormData()
+  body.set('title', title)
+  body.set('book', book)
+
+  const response = await requestJson<{ project: ProjectDetail }>('/api/projects', {
+    method: 'POST',
+    body,
+  })
   return response.project
 }
 
