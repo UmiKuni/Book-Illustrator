@@ -7,10 +7,16 @@ import {
 
 const MAX_CHARACTERS = 2;
 
+export type PortraitState = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
+
 export interface Character {
   position: number;
   name: string;
   prompt: string;
+  portraitState: PortraitState;
+  portraitImagePath: string | null;
+  portraitMimeType: string | null;
+  portraitErrorMessage: string | null;
 }
 
 export interface CharacterProjectContext {
@@ -69,7 +75,15 @@ export function parseCharacterOutput(outputText: string | undefined): Character[
       );
     }
 
-    return { position, name, prompt };
+    return {
+      position,
+      name,
+      prompt,
+      portraitState: "PENDING",
+      portraitImagePath: null,
+      portraitMimeType: null,
+      portraitErrorMessage: null,
+    };
   });
 }
 

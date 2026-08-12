@@ -11,6 +11,7 @@ import type {
   GeminiBookReference,
   GeminiCharacterOutput,
   GeminiGeneratedStyle,
+  GeminiImageOutput,
   GeminiInteractionReference,
   GeminiProvider,
 } from "../src/gemini.js";
@@ -84,6 +85,18 @@ class FakeGeminiProvider implements GeminiProvider {
 
   async generateCharacters(_styleInteractionId: string): Promise<GeminiCharacterOutput> {
     throw new Error("Character generation is not used by Style tests.");
+  }
+
+  async createPortraitContext(_style: string): Promise<GeminiInteractionReference> {
+    throw new Error("Portrait generation is not used by Style tests.");
+  }
+
+  async generatePortrait(
+    _previousInteractionId: string,
+    _characterName: string,
+    _characterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    throw new Error("Portrait generation is not used by Style tests.");
   }
 }
 

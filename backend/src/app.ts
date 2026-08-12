@@ -6,6 +6,7 @@ import { CharacterProjectNotFoundError, CharacterService } from "./characters.js
 import { GoogleGeminiProvider, type GeminiProvider } from "./gemini.js";
 import { LocalStore, type User } from "./local-store.js";
 import { PipelineExecutor, PipelineRuleError, PipelineService } from "./pipeline.js";
+import { PortraitProjectNotFoundError, PortraitService } from "./portraits.js";
 import { StyleProjectNotFoundError, StyleService } from "./style.js";
 
 const SESSION_COOKIE = "book_studio_session";
@@ -66,9 +67,15 @@ export function createApp(options: AppOptions = {}): AppContext {
     new GoogleGeminiProvider({
       apiKey: process.env.GEMINI_API_KEY,
       textModel: process.env.GEMINI_TEXT_MODEL ?? "gemini-3.6-flash",
+      imageModel: process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-lite-image",
     });
   const styleService = new StyleService(store, geminiProvider, new PipelineExecutor(pipeline));
   const characterService = new CharacterService(
+    store,
+    geminiProvider,
+    new PipelineExecutor(pipeline),
+  );
+  const portraitService = new PortraitService(
     store,
     geminiProvider,
     new PipelineExecutor(pipeline),
@@ -247,6 +254,52 @@ export function createApp(options: AppOptions = {}): AppContext {
       });
     } catch (error) {
       if (error instanceof CharacterProjectNotFoundError) {
+        response.status(404).json({ error: "Project not found." });
+        return;
+      }
+      if (error instanceof PipelineRuleError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/projects/:id/steps/portraits/run", requireUser, async (request, response) => {
+    const user = response.locals.user as User;
+    const projectId = request.params.id;
+
+    if (typeof projectId !== "string") {
+      response.status(404).json({ error: "Project not found." });
+      return;
+    }
+
+    try {
+      const result = await portraitService.execute(user.id, projectId);
+
+      if (result.execution.outcome === "ALREADY_RUNNING") {
+        response.status(409).json({
+          error: "Portraits are already running.",
+          step: result.execution.step,
+          characters: result.characters,
+        });
+        return;
+      }
+      if (result.execution.outcome === "FAILED") {
+        response.status(502).json({
+          error: result.execution.step.errorMessage ?? "Portrait generation failed.",
+          step: result.execution.step,
+          characters: result.characters,
+        });
+        return;
+      }
+
+      response.status(200).json({
+        step: result.execution.step,
+        characters: result.characters,
+      });
+    } catch (error) {
+      if (error instanceof PortraitProjectNotFoundError) {
         response.status(404).json({ error: "Project not found." });
         return;
       }

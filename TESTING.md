@@ -10,7 +10,10 @@ recovery. Style tests use a deterministic fake Gemini provider to cover book
 context reuse, persistence, provider failure, and overlapping requests.
 Character tests cover structured-output validation, the server-side two-record
 cap, context reuse, persistence, retry, ownership, and duplicate prevention.
-The chapter cap will be added with its feature increment.
+Portrait tests cover sequential image-context chaining, local image bytes,
+per-character progress, partial failure persistence, restart-safe retry,
+invalid image output, ownership, and duplicate prevention. The chapter cap
+will be added with its feature increment.
 
 ## Frontend
 

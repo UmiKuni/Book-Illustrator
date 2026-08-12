@@ -10,6 +10,7 @@ import type {
   GeminiBookReference,
   GeminiCharacterOutput,
   GeminiGeneratedStyle,
+  GeminiImageOutput,
   GeminiInteractionReference,
   GeminiProvider,
 } from "../src/gemini.js";
@@ -81,6 +82,18 @@ class FakeGeminiProvider implements GeminiProvider {
       interactionId: `characters-interaction-${this.characterContexts.length}`,
       outputText: this.characterOutput,
     };
+  }
+
+  async createPortraitContext(_style: string): Promise<GeminiInteractionReference> {
+    throw new Error("Portrait generation is not used by Character tests.");
+  }
+
+  async generatePortrait(
+    _previousInteractionId: string,
+    _characterName: string,
+    _characterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    throw new Error("Portrait generation is not used by Character tests.");
   }
 }
 
@@ -182,11 +195,23 @@ describe("Gemini character generation", () => {
       .expect(200);
 
     const expectedCharacters = [
-      { position: 0, name: "Mole", prompt: "A gentle adult mole in a velvet coat" },
+      {
+        position: 0,
+        name: "Mole",
+        prompt: "A gentle adult mole in a velvet coat",
+        portraitState: "PENDING",
+        portraitImagePath: null,
+        portraitMimeType: null,
+        portraitErrorMessage: null,
+      },
       {
         position: 1,
         name: "Rat",
         prompt: "A cheerful adult water rat beside the river",
+        portraitState: "PENDING",
+        portraitImagePath: null,
+        portraitMimeType: null,
+        portraitErrorMessage: null,
       },
     ];
     expect(executed.body).toMatchObject({

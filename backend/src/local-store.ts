@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import Database from "better-sqlite3";
@@ -10,6 +10,7 @@ import type {
   CharacterProjectContext,
   CharacterRepository,
 } from "./characters.js";
+import type { PortraitProjectContext, PortraitRepository } from "./portraits.js";
 import {
   deriveProjectProgress,
   PIPELINE_STEP_NAMES,
@@ -66,10 +67,21 @@ interface CharacterProjectRow {
   character_interaction_id: string | null;
 }
 
+interface PortraitProjectRow {
+  id: string;
+  style: string | null;
+  character_interaction_id: string | null;
+  image_interaction_id: string | null;
+}
+
 interface CharacterRow {
   position: number;
   name: string;
   prompt: string;
+  portrait_state: Character["portraitState"];
+  portrait_image_path: string | null;
+  portrait_mime_type: string | null;
+  portrait_error_message: string | null;
 }
 
 interface StyleProjectRow {
@@ -120,7 +132,7 @@ function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary 
   };
 }
 
-export class LocalStore implements StyleRepository, CharacterRepository {
+export class LocalStore implements StyleRepository, CharacterRepository, PortraitRepository {
   private readonly database: Database.Database;
 
   constructor(private readonly dataDirectory: string) {
@@ -157,6 +169,7 @@ export class LocalStore implements StyleRepository, CharacterRepository {
         style TEXT,
         style_interaction_id TEXT,
         character_interaction_id TEXT,
+        image_interaction_id TEXT,
         created_at TEXT NOT NULL
       );
 
@@ -165,6 +178,11 @@ export class LocalStore implements StyleRepository, CharacterRepository {
         position INTEGER NOT NULL CHECK (position >= 0 AND position < 2),
         name TEXT NOT NULL,
         prompt TEXT NOT NULL,
+        portrait_state TEXT NOT NULL DEFAULT 'PENDING'
+          CHECK (portrait_state IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED')),
+        portrait_image_path TEXT,
+        portrait_mime_type TEXT,
+        portrait_error_message TEXT,
         PRIMARY KEY (project_id, position)
       );
 
@@ -187,6 +205,14 @@ export class LocalStore implements StyleRepository, CharacterRepository {
     this.ensureProjectColumn("style", "TEXT");
     this.ensureProjectColumn("style_interaction_id", "TEXT");
     this.ensureProjectColumn("character_interaction_id", "TEXT");
+    this.ensureProjectColumn("image_interaction_id", "TEXT");
+    this.ensureCharacterColumn(
+      "portrait_state",
+      "TEXT NOT NULL DEFAULT 'PENDING' CHECK (portrait_state IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED'))",
+    );
+    this.ensureCharacterColumn("portrait_image_path", "TEXT");
+    this.ensureCharacterColumn("portrait_mime_type", "TEXT");
+    this.ensureCharacterColumn("portrait_error_message", "TEXT");
 
     const backfillStep = this.database.prepare(`
       INSERT OR IGNORE INTO pipeline_steps (project_id, step_name, position, state)
@@ -428,6 +454,120 @@ export class LocalStore implements StyleRepository, CharacterRepository {
     persist();
   }
 
+  getPortraitProject(userId: string, projectId: string): PortraitProjectContext | undefined {
+    const row = this.database
+      .prepare(`
+        SELECT id, style, character_interaction_id, image_interaction_id
+        FROM projects
+        WHERE id = ? AND user_id = ?
+      `)
+      .get(projectId, userId) as PortraitProjectRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id,
+      style: row.style,
+      characterInteractionId: row.character_interaction_id,
+      imageInteractionId: row.image_interaction_id,
+      characters: this.getCharacters(projectId),
+    };
+  }
+
+  saveImageInteractionId(projectId: string, interactionId: string): void {
+    const updated = this.database
+      .prepare("UPDATE projects SET image_interaction_id = ? WHERE id = ?")
+      .run(interactionId, projectId);
+    if (updated.changes !== 1) {
+      throw new Error("Project was not found while saving portrait image context.");
+    }
+  }
+
+  markPortraitRunning(projectId: string, position: number): void {
+    const updated = this.database
+      .prepare(`
+        UPDATE characters
+        SET portrait_state = 'RUNNING', portrait_error_message = NULL
+        WHERE project_id = ? AND position = ? AND portrait_state <> 'SUCCEEDED'
+      `)
+      .run(projectId, position);
+    if (updated.changes !== 1) {
+      throw new Error(`Character ${position + 1} cannot start portrait generation.`);
+    }
+  }
+
+  markPortraitFailed(projectId: string, position: number, errorMessage: string): void {
+    const updated = this.database
+      .prepare(`
+        UPDATE characters
+        SET portrait_state = 'FAILED', portrait_error_message = ?
+        WHERE project_id = ? AND position = ? AND portrait_state <> 'SUCCEEDED'
+      `)
+      .run(errorMessage.trim() || "Portrait generation failed.", projectId, position);
+    if (updated.changes !== 1) {
+      throw new Error(`Character ${position + 1} cannot record portrait failure.`);
+    }
+  }
+
+  async savePortraitSuccess(
+    projectId: string,
+    position: number,
+    imageBytes: Uint8Array,
+    mimeType: string,
+    interactionId: string,
+  ): Promise<void> {
+    const extension = this.portraitExtension(mimeType);
+    const relativeImagePath = path.posix.join(
+      "projects",
+      projectId,
+      "portraits",
+      `${position}.${extension}`,
+    );
+    const absoluteImagePath = this.resolveDataPath(relativeImagePath);
+    const portraitDirectory = path.dirname(absoluteImagePath);
+    const temporaryImagePath = path.join(
+      portraitDirectory,
+      `.${position}.${extension}.${randomUUID()}.tmp`,
+    );
+
+    await mkdir(portraitDirectory, { recursive: true });
+    await writeFile(temporaryImagePath, imageBytes);
+
+    try {
+      await rm(absoluteImagePath, { force: true });
+      await rename(temporaryImagePath, absoluteImagePath);
+
+      const updateCharacter = this.database.prepare(`
+        UPDATE characters
+        SET portrait_state = 'SUCCEEDED', portrait_image_path = ?,
+            portrait_mime_type = ?, portrait_error_message = NULL
+        WHERE project_id = ? AND position = ? AND portrait_state = 'RUNNING'
+      `);
+      const updateContext = this.database.prepare(`
+        UPDATE projects
+        SET image_interaction_id = ?
+        WHERE id = ?
+      `);
+      const persist = this.database.transaction(() => {
+        if (
+          updateCharacter.run(relativeImagePath, mimeType, projectId, position).changes !== 1
+        ) {
+          throw new Error(`Character ${position + 1} portrait is no longer running.`);
+        }
+        if (updateContext.run(interactionId, projectId).changes !== 1) {
+          throw new Error("Project was not found while saving portrait image context.");
+        }
+      });
+      persist();
+    } catch (error) {
+      await rm(temporaryImagePath, { force: true });
+      await rm(absoluteImagePath, { force: true });
+      throw error;
+    }
+  }
+
   getPipelineSteps(projectId: string): PipelineStep[] {
     const rows = this.database
       .prepare(`
@@ -563,10 +703,14 @@ export class LocalStore implements StyleRepository, CharacterRepository {
   }
 
   private resolveBookPath(relativeBookPath: string): string {
-    const absoluteBookPath = path.resolve(this.dataDirectory, relativeBookPath);
+    return this.resolveDataPath(relativeBookPath);
+  }
+
+  private resolveDataPath(relativePath: string): string {
+    const absoluteBookPath = path.resolve(this.dataDirectory, relativePath);
     const dataRoot = `${this.dataDirectory}${path.sep}`;
     if (!absoluteBookPath.startsWith(dataRoot)) {
-      throw new Error("Stored book path is outside the application data directory");
+      throw new Error("Stored path is outside the application data directory");
     }
     return absoluteBookPath;
   }
@@ -574,7 +718,8 @@ export class LocalStore implements StyleRepository, CharacterRepository {
   private getCharacters(projectId: string): Character[] {
     const rows = this.database
       .prepare(`
-        SELECT position, name, prompt
+        SELECT position, name, prompt, portrait_state, portrait_image_path,
+               portrait_mime_type, portrait_error_message
         FROM characters
         WHERE project_id = ?
         ORDER BY position
@@ -585,13 +730,33 @@ export class LocalStore implements StyleRepository, CharacterRepository {
       position: row.position,
       name: row.name,
       prompt: row.prompt,
+      portraitState: row.portrait_state,
+      portraitImagePath: row.portrait_image_path,
+      portraitMimeType: row.portrait_mime_type,
+      portraitErrorMessage: row.portrait_error_message,
     }));
+  }
+
+  private portraitExtension(mimeType: string): string {
+    const extension =
+      mimeType === "image/jpeg" ? "jpg" : mimeType === "image/png" ? "png" : "webp";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      throw new Error("Unsupported portrait image type.");
+    }
+    return extension;
   }
 
   private ensureProjectColumn(name: string, definition: string): void {
     const columns = this.database.prepare("PRAGMA table_info(projects)").all() as TableColumnRow[];
     if (!columns.some((column) => column.name === name)) {
       this.database.exec(`ALTER TABLE projects ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  private ensureCharacterColumn(name: string, definition: string): void {
+    const columns = this.database.prepare("PRAGMA table_info(characters)").all() as TableColumnRow[];
+    if (!columns.some((column) => column.name === name)) {
+      this.database.exec(`ALTER TABLE characters ADD COLUMN ${name} ${definition}`);
     }
   }
 

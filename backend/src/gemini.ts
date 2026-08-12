@@ -25,6 +25,10 @@ const CHARACTER_RESPONSE_SCHEMA = {
     additionalProperties: false,
   },
 } as const;
+const PORTRAIT_CONTEXT_RULES = `
+There must be no text on the image, and it must not look like a cover page.
+Produce a full illustration without borders, titles, descriptions, or panels.
+Stay family-friendly with uplifting colors.`;
 
 export interface GeminiBookReference {
   uri: string;
@@ -42,6 +46,11 @@ export interface GeminiCharacterOutput extends GeminiInteractionReference {
   outputText: string | undefined;
 }
 
+export interface GeminiImageOutput extends GeminiInteractionReference {
+  imageData: string | undefined;
+  mimeType: string | undefined;
+}
+
 export interface GeminiProvider {
   uploadBook(bookPath: string): Promise<GeminiBookReference>;
   createBookInteraction(bookUri: string): Promise<GeminiInteractionReference>;
@@ -51,11 +60,18 @@ export interface GeminiProvider {
     style: string,
   ): Promise<GeminiInteractionReference>;
   generateCharacters(styleInteractionId: string): Promise<GeminiCharacterOutput>;
+  createPortraitContext(style: string): Promise<GeminiInteractionReference>;
+  generatePortrait(
+    previousInteractionId: string,
+    characterName: string,
+    characterPrompt: string,
+  ): Promise<GeminiImageOutput>;
 }
 
 export interface GoogleGeminiProviderOptions {
   apiKey?: string;
   textModel: string;
+  imageModel: string;
 }
 
 function requiredProviderString(value: unknown, label: string): string {
@@ -136,6 +152,53 @@ export class GoogleGeminiProvider implements GeminiProvider {
     return {
       interactionId: requiredProviderString(interaction.id, "Characters interaction ID"),
       outputText: interaction.output_text,
+    };
+  }
+
+  async createPortraitContext(style: string): Promise<GeminiInteractionReference> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.imageModel,
+      input: `You are going to generate portrait images to illustrate this book.
+The style to follow is: ${style}
+Also follow these rules: ${PORTRAIT_CONTEXT_RULES}`,
+    });
+
+    return {
+      interactionId: requiredProviderString(interaction.id, "portrait context interaction ID"),
+    };
+  }
+
+  async generatePortrait(
+    previousInteractionId: string,
+    characterName: string,
+    characterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.imageModel,
+      input: `Create an illustration for ${characterName} following this description: ${characterPrompt}`,
+      previous_interaction_id: previousInteractionId,
+    });
+
+    let image: { data?: string; mime_type?: string } | undefined;
+    for (const step of [...(interaction.steps ?? [])].reverse()) {
+      if (step.type !== "model_output") {
+        continue;
+      }
+      for (const content of [...(step.content ?? [])].reverse()) {
+        if (content.type === "image") {
+          image = content;
+          break;
+        }
+      }
+      if (image) {
+        break;
+      }
+    }
+
+    return {
+      interactionId: requiredProviderString(interaction.id, "portrait interaction ID"),
+      imageData: image?.data,
+      mimeType: image?.mime_type,
     };
   }
 
