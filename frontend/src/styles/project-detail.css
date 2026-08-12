@@ -686,6 +686,40 @@
   background: var(--red);
 }
 
+.media-download-button {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  bottom: 12px;
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(150, 56, 23, 0.24);
+  border-radius: 50%;
+  color: var(--accent-deep);
+  background: rgba(255, 253, 248, 0.92);
+  box-shadow: 0 5px 16px rgba(55, 40, 27, 0.18);
+  backdrop-filter: blur(5px);
+  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.media-download-button:hover {
+  color: white;
+  background: var(--accent);
+  transform: translateY(-1px);
+}
+
+.media-download-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .card-copy {
   min-height: 0;
   padding: 20px;

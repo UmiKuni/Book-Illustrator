@@ -1,13 +1,24 @@
 import { portraitMediaUrl } from '../projects.api'
 import type { Character } from '../projects.types'
+import { MediaDownloadButton } from './MediaDownloadButton'
 import { humanState } from './pipelineDisplay'
 
 export function CharacterCard({ character, projectId }: { character: Character; projectId: string }) {
+  const portraitUrl = portraitMediaUrl(projectId, character.position)
+
   return (
     <article className="character-card">
       <div className={`portrait-frame portrait-${character.portraitState.toLowerCase()}`}>
         {character.portraitState === 'SUCCEEDED' ? (
-          <img src={portraitMediaUrl(projectId, character.position)} alt={`${character.name} portrait`} />
+          <>
+            <img src={portraitUrl} alt={`${character.name} portrait`} />
+            <MediaDownloadButton
+              href={portraitUrl}
+              label={`Download ${character.name} portrait`}
+              mimeType={character.portraitMimeType}
+              fileName={`character-${character.position + 1}-portrait`}
+            />
+          </>
         ) : (
           <div className="media-placeholder">
             {character.portraitState === 'RUNNING' && <span className="portrait-loader" aria-hidden="true" />}

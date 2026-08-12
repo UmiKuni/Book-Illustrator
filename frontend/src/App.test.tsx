@@ -159,9 +159,17 @@ describe('project pipeline', () => {
       'src',
       '/api/projects/project-1/chapters/0/illustration',
     )
+    expect(screen.getByRole('link', { name: 'Download illustration for Arrival at the House' })).toHaveAttribute(
+      'download',
+      'chapter-1-illustration.png',
+    )
 
     fireEvent.click(screen.getByRole('tab', { name: /Character Studies/ }))
     expect(screen.getByRole('heading', { name: 'Ada Vale' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download Ada Vale portrait' })).toHaveAttribute(
+      'download',
+      'character-1-portrait.png',
+    )
     fireEvent.click(screen.getByRole('tab', { name: /Visual Direction/ }))
     expect(screen.getByText(/Luminous gouache/)).toBeInTheDocument()
 
@@ -287,6 +295,11 @@ describe('project pipeline', () => {
       'src',
       '/api/projects/project-1/characters/0/portrait',
     )
+    expect(screen.getByRole('link', { name: 'Download Ada Vale portrait' })).toHaveAttribute(
+      'href',
+      '/api/projects/project-1/characters/0/portrait',
+    )
+    expect(screen.queryByRole('link', { name: 'Download Ben Rowan portrait' })).not.toBeInTheDocument()
     expect(screen.getByText('Painting Ben Rowan')).toBeInTheDocument()
     expect(screen.getByText('Ben Rowan').closest('.character-card')).toHaveTextContent('Running')
   })
