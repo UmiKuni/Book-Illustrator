@@ -11,6 +11,10 @@ import type {
   CharacterProjectContext,
   CharacterRepository,
 } from "./characters.js";
+import type {
+  IllustrationProjectContext,
+  IllustrationRepository,
+} from "./illustrations.js";
 import type { PortraitProjectContext, PortraitRepository } from "./portraits.js";
 import {
   deriveProjectProgress,
@@ -96,6 +100,14 @@ interface ChapterRow {
   position: number;
   name: string;
   prompt: string;
+  illustration_image_path: string | null;
+  illustration_mime_type: string | null;
+}
+
+interface IllustrationProjectRow {
+  id: string;
+  image_interaction_id: string | null;
+  chapter_image_context_id: string | null;
 }
 
 interface StyleProjectRow {
@@ -147,7 +159,12 @@ function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary 
 }
 
 export class LocalStore
-  implements StyleRepository, CharacterRepository, PortraitRepository, ChapterRepository
+  implements
+    StyleRepository,
+    CharacterRepository,
+    PortraitRepository,
+    ChapterRepository,
+    IllustrationRepository
 {
   private readonly database: Database.Database;
 
@@ -187,6 +204,7 @@ export class LocalStore
         character_interaction_id TEXT,
         chapter_interaction_id TEXT,
         image_interaction_id TEXT,
+        chapter_image_context_id TEXT,
         created_at TEXT NOT NULL
       );
 
@@ -208,6 +226,8 @@ export class LocalStore
         position INTEGER NOT NULL CHECK (position = 0),
         name TEXT NOT NULL,
         prompt TEXT NOT NULL,
+        illustration_image_path TEXT,
+        illustration_mime_type TEXT,
         PRIMARY KEY (project_id, position)
       );
 
@@ -232,6 +252,7 @@ export class LocalStore
     this.ensureProjectColumn("character_interaction_id", "TEXT");
     this.ensureProjectColumn("chapter_interaction_id", "TEXT");
     this.ensureProjectColumn("image_interaction_id", "TEXT");
+    this.ensureProjectColumn("chapter_image_context_id", "TEXT");
     this.ensureCharacterColumn(
       "portrait_state",
       "TEXT NOT NULL DEFAULT 'PENDING' CHECK (portrait_state IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED'))",
@@ -239,6 +260,8 @@ export class LocalStore
     this.ensureCharacterColumn("portrait_image_path", "TEXT");
     this.ensureCharacterColumn("portrait_mime_type", "TEXT");
     this.ensureCharacterColumn("portrait_error_message", "TEXT");
+    this.ensureChapterColumn("illustration_image_path", "TEXT");
+    this.ensureChapterColumn("illustration_mime_type", "TEXT");
 
     const backfillStep = this.database.prepare(`
       INSERT OR IGNORE INTO pipeline_steps (project_id, step_name, position, state)
@@ -546,7 +569,7 @@ export class LocalStore
     mimeType: string,
     interactionId: string,
   ): Promise<void> {
-    const extension = this.portraitExtension(mimeType);
+    const extension = this.imageExtension(mimeType);
     const relativeImagePath = path.posix.join(
       "projects",
       projectId,
@@ -639,6 +662,87 @@ export class LocalStore
       }
     });
     persist();
+  }
+
+  getIllustrationProject(
+    userId: string,
+    projectId: string,
+  ): IllustrationProjectContext | undefined {
+    const row = this.database
+      .prepare(`
+        SELECT id, image_interaction_id, chapter_image_context_id
+        FROM projects
+        WHERE id = ? AND user_id = ?
+      `)
+      .get(projectId, userId) as IllustrationProjectRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id,
+      imageInteractionId: row.image_interaction_id,
+      chapterImageContextId: row.chapter_image_context_id,
+      chapters: this.getChapters(projectId),
+    };
+  }
+
+  saveChapterImageContextId(projectId: string, interactionId: string): void {
+    const updated = this.database
+      .prepare(`
+        UPDATE projects
+        SET chapter_image_context_id = COALESCE(chapter_image_context_id, ?)
+        WHERE id = ?
+      `)
+      .run(interactionId, projectId);
+    if (updated.changes !== 1) {
+      throw new Error("Project was not found while saving chapter image context.");
+    }
+  }
+
+  async saveIllustrationSuccess(
+    projectId: string,
+    chapterPosition: number,
+    imageBytes: Uint8Array,
+    mimeType: string,
+  ): Promise<void> {
+    const extension = this.imageExtension(mimeType);
+    const relativeImagePath = path.posix.join(
+      "projects",
+      projectId,
+      "illustrations",
+      `${chapterPosition}.${extension}`,
+    );
+    const absoluteImagePath = this.resolveDataPath(relativeImagePath);
+    const illustrationDirectory = path.dirname(absoluteImagePath);
+    const temporaryImagePath = path.join(
+      illustrationDirectory,
+      `.${chapterPosition}.${extension}.${randomUUID()}.tmp`,
+    );
+
+    await mkdir(illustrationDirectory, { recursive: true });
+    await writeFile(temporaryImagePath, imageBytes);
+
+    try {
+      await rm(absoluteImagePath, { force: true });
+      await rename(temporaryImagePath, absoluteImagePath);
+
+      const updated = this.database
+        .prepare(`
+          UPDATE chapters
+          SET illustration_image_path = ?, illustration_mime_type = ?
+          WHERE project_id = ? AND position = ?
+        `)
+        .run(relativeImagePath, mimeType, projectId, chapterPosition);
+      if (updated.changes !== 1) {
+        throw new Error("Chapter was not found while saving its illustration.");
+      }
+    } catch (error) {
+      await rm(temporaryImagePath, { force: true });
+      await rm(absoluteImagePath, { force: true });
+      throw error;
+    }
   }
 
   getPipelineSteps(projectId: string): PipelineStep[] {
@@ -813,7 +917,7 @@ export class LocalStore
   private getChapters(projectId: string): Chapter[] {
     const rows = this.database
       .prepare(`
-        SELECT position, name, prompt
+        SELECT position, name, prompt, illustration_image_path, illustration_mime_type
         FROM chapters
         WHERE project_id = ?
         ORDER BY position
@@ -824,14 +928,16 @@ export class LocalStore
       position: row.position,
       name: row.name,
       prompt: row.prompt,
+      illustrationImagePath: row.illustration_image_path,
+      illustrationMimeType: row.illustration_mime_type,
     }));
   }
 
-  private portraitExtension(mimeType: string): string {
+  private imageExtension(mimeType: string): string {
     const extension =
       mimeType === "image/jpeg" ? "jpg" : mimeType === "image/png" ? "png" : "webp";
     if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      throw new Error("Unsupported portrait image type.");
+      throw new Error("Unsupported generated image type.");
     }
     return extension;
   }
@@ -847,6 +953,13 @@ export class LocalStore
     const columns = this.database.prepare("PRAGMA table_info(characters)").all() as TableColumnRow[];
     if (!columns.some((column) => column.name === name)) {
       this.database.exec(`ALTER TABLE characters ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  private ensureChapterColumn(name: string, definition: string): void {
+    const columns = this.database.prepare("PRAGMA table_info(chapters)").all() as TableColumnRow[];
+    if (!columns.some((column) => column.name === name)) {
+      this.database.exec(`ALTER TABLE chapters ADD COLUMN ${name} ${definition}`);
     }
   }
 

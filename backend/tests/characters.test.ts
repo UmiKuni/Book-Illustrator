@@ -100,6 +100,20 @@ class FakeGeminiProvider implements GeminiProvider {
   ): Promise<GeminiImageOutput> {
     throw new Error("Portrait generation is not used by Character tests.");
   }
+
+  async createChapterIllustrationContext(
+    _previousInteractionId: string,
+  ): Promise<GeminiInteractionReference> {
+    throw new Error("Illustration generation is not used by Character tests.");
+  }
+
+  async generateChapterIllustration(
+    _previousInteractionId: string,
+    _chapterName: string,
+    _chapterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    throw new Error("Illustration generation is not used by Character tests.");
+  }
 }
 
 let context: AppContext;

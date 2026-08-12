@@ -5,6 +5,10 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { ChapterProjectNotFoundError, ChapterService } from "./chapters.js";
 import { CharacterProjectNotFoundError, CharacterService } from "./characters.js";
 import { GoogleGeminiProvider, type GeminiProvider } from "./gemini.js";
+import {
+  IllustrationProjectNotFoundError,
+  IllustrationService,
+} from "./illustrations.js";
 import { LocalStore, type User } from "./local-store.js";
 import { PipelineExecutor, PipelineRuleError, PipelineService } from "./pipeline.js";
 import { PortraitProjectNotFoundError, PortraitService } from "./portraits.js";
@@ -82,6 +86,11 @@ export function createApp(options: AppOptions = {}): AppContext {
     new PipelineExecutor(pipeline),
   );
   const chapterService = new ChapterService(
+    store,
+    geminiProvider,
+    new PipelineExecutor(pipeline),
+  );
+  const illustrationService = new IllustrationService(
     store,
     geminiProvider,
     new PipelineExecutor(pipeline),
@@ -362,6 +371,56 @@ export function createApp(options: AppOptions = {}): AppContext {
       throw error;
     }
   });
+
+  app.post(
+    "/api/projects/:id/steps/illustrations/run",
+    requireUser,
+    async (request, response) => {
+      const user = response.locals.user as User;
+      const projectId = request.params.id;
+
+      if (typeof projectId !== "string") {
+        response.status(404).json({ error: "Project not found." });
+        return;
+      }
+
+      try {
+        const result = await illustrationService.execute(user.id, projectId);
+
+        if (result.execution.outcome === "ALREADY_RUNNING") {
+          response.status(409).json({
+            error: "Illustrations are already running.",
+            step: result.execution.step,
+            chapters: result.chapters,
+          });
+          return;
+        }
+        if (result.execution.outcome === "FAILED") {
+          response.status(502).json({
+            error: result.execution.step.errorMessage ?? "Illustration generation failed.",
+            step: result.execution.step,
+            chapters: result.chapters,
+          });
+          return;
+        }
+
+        response.status(200).json({
+          step: result.execution.step,
+          chapters: result.chapters,
+        });
+      } catch (error) {
+        if (error instanceof IllustrationProjectNotFoundError) {
+          response.status(404).json({ error: "Project not found." });
+          return;
+        }
+        if (error instanceof PipelineRuleError) {
+          response.status(409).json({ error: error.message });
+          return;
+        }
+        throw error;
+      }
+    },
+  );
 
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
     const status =

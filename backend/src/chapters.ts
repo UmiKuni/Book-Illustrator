@@ -11,6 +11,8 @@ export interface Chapter {
   position: number;
   name: string;
   prompt: string;
+  illustrationImagePath: string | null;
+  illustrationMimeType: string | null;
 }
 
 export interface ChapterProjectContext {
@@ -68,7 +70,13 @@ export function parseChapterOutput(outputText: string | undefined): Chapter[] {
       );
     }
 
-    return { position, name, prompt };
+    return {
+      position,
+      name,
+      prompt,
+      illustrationImagePath: null,
+      illustrationMimeType: null,
+    };
   });
 }
 

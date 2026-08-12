@@ -129,6 +129,20 @@ class FakeGeminiProvider implements GeminiProvider {
       this.activePortraitCalls -= 1;
     }
   }
+
+  async createChapterIllustrationContext(
+    _previousInteractionId: string,
+  ): Promise<GeminiInteractionReference> {
+    throw new Error("Illustration generation is not used by Portrait tests.");
+  }
+
+  async generateChapterIllustration(
+    _previousInteractionId: string,
+    _chapterName: string,
+    _chapterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    throw new Error("Illustration generation is not used by Portrait tests.");
+  }
 }
 
 let context: AppContext;

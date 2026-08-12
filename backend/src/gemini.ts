@@ -91,6 +91,14 @@ export interface GeminiProvider {
     characterName: string,
     characterPrompt: string,
   ): Promise<GeminiImageOutput>;
+  createChapterIllustrationContext(
+    previousInteractionId: string,
+  ): Promise<GeminiInteractionReference>;
+  generateChapterIllustration(
+    previousInteractionId: string,
+    chapterName: string,
+    chapterPrompt: string,
+  ): Promise<GeminiImageOutput>;
 }
 
 export interface GoogleGeminiProviderOptions {
@@ -240,6 +248,61 @@ Also follow these rules: ${PORTRAIT_CONTEXT_RULES}`,
 
     return {
       interactionId: requiredProviderString(interaction.id, "portrait interaction ID"),
+      imageData: image?.data,
+      mimeType: image?.mime_type,
+    };
+  }
+
+  async createChapterIllustrationContext(
+    previousInteractionId: string,
+  ): Promise<GeminiInteractionReference> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.imageModel,
+      input:
+        "Starting from now, we're going to illustrate the book's chapters. Don't forget to refer to your previous illustrations of the characters to keep the characters consistency, but feel free to change their position.",
+      previous_interaction_id: previousInteractionId,
+    });
+
+    return {
+      interactionId: requiredProviderString(
+        interaction.id,
+        "chapter image context interaction ID",
+      ),
+    };
+  }
+
+  async generateChapterIllustration(
+    previousInteractionId: string,
+    chapterName: string,
+    chapterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.imageModel,
+      input: `Create an illustration for ${chapterName} using the previously generated characters following this description: ${chapterPrompt}`,
+      previous_interaction_id: previousInteractionId,
+    });
+
+    let image: { data?: string; mime_type?: string } | undefined;
+    for (const step of [...(interaction.steps ?? [])].reverse()) {
+      if (step.type !== "model_output") {
+        continue;
+      }
+      for (const content of [...(step.content ?? [])].reverse()) {
+        if (content.type === "image") {
+          image = content;
+          break;
+        }
+      }
+      if (image) {
+        break;
+      }
+    }
+
+    return {
+      interactionId: requiredProviderString(
+        interaction.id,
+        "chapter illustration interaction ID",
+      ),
       imageData: image?.data,
       mimeType: image?.mime_type,
     };

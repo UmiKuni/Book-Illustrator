@@ -14,7 +14,9 @@ Portrait tests cover sequential image-context chaining, local image bytes,
 per-character progress, partial failure persistence, restart-safe retry,
 invalid image output, ownership, and duplicate prevention. Chapter tests cover
 text-context chaining, structured-output validation, the server-side one-record
-cap, persistence, retry, ownership, and duplicate prevention.
+cap, persistence, retry, ownership, and duplicate prevention. Illustration
+tests cover core image-context chaining, context reuse, local image persistence,
+invalid image output, ownership, and duplicate prevention.
 
 ## Frontend
 

@@ -116,6 +116,20 @@ class FakeGeminiProvider implements GeminiProvider {
       mimeType: "image/jpeg",
     };
   }
+
+  async createChapterIllustrationContext(
+    _previousInteractionId: string,
+  ): Promise<GeminiInteractionReference> {
+    throw new Error("Illustration generation is not used by Chapter tests.");
+  }
+
+  async generateChapterIllustration(
+    _previousInteractionId: string,
+    _chapterName: string,
+    _chapterPrompt: string,
+  ): Promise<GeminiImageOutput> {
+    throw new Error("Illustration generation is not used by Chapter tests.");
+  }
 }
 
 let context: AppContext;
@@ -206,6 +220,8 @@ describe("Gemini chapter generation", () => {
       position: 0,
       name: "The River Bank",
       prompt: "Mole meets Rat beside the sparkling river in one watercolor scene.",
+      illustrationImagePath: null,
+      illustrationMimeType: null,
     };
     expect(executed.body).toMatchObject({
       step: { name: "CHAPTERS", state: "SUCCEEDED", attemptCount: 1 },
