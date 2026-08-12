@@ -5,6 +5,7 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import type { Chapter, ChapterProjectContext, ChapterRepository } from "./chapters.js";
 import type {
   Character,
   CharacterProjectContext,
@@ -41,6 +42,7 @@ export interface ProjectDetail extends ProjectSummary {
   bookText: string;
   style: string | null;
   characters: Character[];
+  chapters: Chapter[];
   steps: PipelineStep[];
 }
 
@@ -74,6 +76,12 @@ interface PortraitProjectRow {
   image_interaction_id: string | null;
 }
 
+interface ChapterProjectRow {
+  id: string;
+  character_interaction_id: string | null;
+  chapter_interaction_id: string | null;
+}
+
 interface CharacterRow {
   position: number;
   name: string;
@@ -82,6 +90,12 @@ interface CharacterRow {
   portrait_image_path: string | null;
   portrait_mime_type: string | null;
   portrait_error_message: string | null;
+}
+
+interface ChapterRow {
+  position: number;
+  name: string;
+  prompt: string;
 }
 
 interface StyleProjectRow {
@@ -132,7 +146,9 @@ function projectSummary(row: ProjectRow, steps: PipelineStep[]): ProjectSummary 
   };
 }
 
-export class LocalStore implements StyleRepository, CharacterRepository, PortraitRepository {
+export class LocalStore
+  implements StyleRepository, CharacterRepository, PortraitRepository, ChapterRepository
+{
   private readonly database: Database.Database;
 
   constructor(private readonly dataDirectory: string) {
@@ -169,6 +185,7 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
         style TEXT,
         style_interaction_id TEXT,
         character_interaction_id TEXT,
+        chapter_interaction_id TEXT,
         image_interaction_id TEXT,
         created_at TEXT NOT NULL
       );
@@ -183,6 +200,14 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
         portrait_image_path TEXT,
         portrait_mime_type TEXT,
         portrait_error_message TEXT,
+        PRIMARY KEY (project_id, position)
+      );
+
+      CREATE TABLE IF NOT EXISTS chapters (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position = 0),
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
         PRIMARY KEY (project_id, position)
       );
 
@@ -205,6 +230,7 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
     this.ensureProjectColumn("style", "TEXT");
     this.ensureProjectColumn("style_interaction_id", "TEXT");
     this.ensureProjectColumn("character_interaction_id", "TEXT");
+    this.ensureProjectColumn("chapter_interaction_id", "TEXT");
     this.ensureProjectColumn("image_interaction_id", "TEXT");
     this.ensureCharacterColumn(
       "portrait_state",
@@ -318,6 +344,7 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
       bookText,
       style: null,
       characters: [],
+      chapters: [],
       steps,
     };
   }
@@ -343,6 +370,7 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
       bookText: await readFile(absoluteBookPath, "utf8"),
       style: row.style,
       characters: this.getCharacters(projectId),
+      chapters: this.getChapters(projectId),
       steps,
     };
   }
@@ -568,6 +596,51 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
     }
   }
 
+  getChapterProject(userId: string, projectId: string): ChapterProjectContext | undefined {
+    const row = this.database
+      .prepare(`
+        SELECT id, character_interaction_id, chapter_interaction_id
+        FROM projects
+        WHERE id = ? AND user_id = ?
+      `)
+      .get(projectId, userId) as ChapterProjectRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id,
+      characterInteractionId: row.character_interaction_id,
+      chapterInteractionId: row.chapter_interaction_id,
+      chapters: this.getChapters(projectId),
+    };
+  }
+
+  saveChapters(projectId: string, chapters: Chapter[], interactionId: string): void {
+    const removeExisting = this.database.prepare("DELETE FROM chapters WHERE project_id = ?");
+    const insertChapter = this.database.prepare(`
+      INSERT INTO chapters (project_id, position, name, prompt)
+      VALUES (?, ?, ?, ?)
+    `);
+    const updateContext = this.database.prepare(`
+      UPDATE projects
+      SET chapter_interaction_id = ?
+      WHERE id = ?
+    `);
+
+    const persist = this.database.transaction(() => {
+      removeExisting.run(projectId);
+      for (const chapter of chapters) {
+        insertChapter.run(projectId, chapter.position, chapter.name, chapter.prompt);
+      }
+      if (updateContext.run(interactionId, projectId).changes !== 1) {
+        throw new Error("Project was not found while saving Chapters.");
+      }
+    });
+    persist();
+  }
+
   getPipelineSteps(projectId: string): PipelineStep[] {
     const rows = this.database
       .prepare(`
@@ -734,6 +807,23 @@ export class LocalStore implements StyleRepository, CharacterRepository, Portrai
       portraitImagePath: row.portrait_image_path,
       portraitMimeType: row.portrait_mime_type,
       portraitErrorMessage: row.portrait_error_message,
+    }));
+  }
+
+  private getChapters(projectId: string): Chapter[] {
+    const rows = this.database
+      .prepare(`
+        SELECT position, name, prompt
+        FROM chapters
+        WHERE project_id = ?
+        ORDER BY position
+      `)
+      .all(projectId) as ChapterRow[];
+
+    return rows.map((row) => ({
+      position: row.position,
+      name: row.name,
+      prompt: row.prompt,
     }));
   }
 

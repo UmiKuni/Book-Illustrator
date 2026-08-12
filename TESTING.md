@@ -12,8 +12,9 @@ Character tests cover structured-output validation, the server-side two-record
 cap, context reuse, persistence, retry, ownership, and duplicate prevention.
 Portrait tests cover sequential image-context chaining, local image bytes,
 per-character progress, partial failure persistence, restart-safe retry,
-invalid image output, ownership, and duplicate prevention. The chapter cap
-will be added with its feature increment.
+invalid image output, ownership, and duplicate prevention. Chapter tests cover
+text-context chaining, structured-output validation, the server-side one-record
+cap, persistence, retry, ownership, and duplicate prevention.
 
 ## Frontend
 

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, type AppContext } from "../src/app.js";
 import type {
   GeminiBookReference,
+  GeminiChapterOutput,
   GeminiCharacterOutput,
   GeminiGeneratedStyle,
   GeminiImageOutput,
@@ -82,6 +83,10 @@ class FakeGeminiProvider implements GeminiProvider {
       interactionId: `characters-interaction-${this.characterContexts.length}`,
       outputText: this.characterOutput,
     };
+  }
+
+  async generateChapters(_characterInteractionId: string): Promise<GeminiChapterOutput> {
+    throw new Error("Chapter generation is not used by Character tests.");
   }
 
   async createPortraitContext(_style: string): Promise<GeminiInteractionReference> {

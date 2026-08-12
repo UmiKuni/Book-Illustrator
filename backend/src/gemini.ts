@@ -6,6 +6,8 @@ const GENERATED_STYLE_PROMPT =
   "Can you define an art style that would fit the story but with a twist? Just give us the prompt for the art style that will be added to future prompts.";
 const CHARACTER_PROMPT =
   "Describe the main characters from the book, only the adults, and prepare a detailed image prompt for each one using the book's descriptions. Each prompt should be at least 50 words.";
+const CHAPTER_PROMPT =
+  "Describe the main chapters from the book and prepare a detailed scene illustration prompt for each one. Each prompt must describe a single image and reuse the relevant previously identified character descriptions.";
 
 const CHARACTER_RESPONSE_SCHEMA = {
   type: "array",
@@ -19,6 +21,24 @@ const CHARACTER_RESPONSE_SCHEMA = {
       prompt: {
         type: "string",
         description: "A detailed image-generation prompt based on the book.",
+      },
+    },
+    required: ["name", "prompt"],
+    additionalProperties: false,
+  },
+} as const;
+const CHAPTER_RESPONSE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "The chapter or scene name.",
+      },
+      prompt: {
+        type: "string",
+        description: "A detailed prompt for one chapter scene illustration.",
       },
     },
     required: ["name", "prompt"],
@@ -46,6 +66,10 @@ export interface GeminiCharacterOutput extends GeminiInteractionReference {
   outputText: string | undefined;
 }
 
+export interface GeminiChapterOutput extends GeminiInteractionReference {
+  outputText: string | undefined;
+}
+
 export interface GeminiImageOutput extends GeminiInteractionReference {
   imageData: string | undefined;
   mimeType: string | undefined;
@@ -60,6 +84,7 @@ export interface GeminiProvider {
     style: string,
   ): Promise<GeminiInteractionReference>;
   generateCharacters(styleInteractionId: string): Promise<GeminiCharacterOutput>;
+  generateChapters(characterInteractionId: string): Promise<GeminiChapterOutput>;
   createPortraitContext(style: string): Promise<GeminiInteractionReference>;
   generatePortrait(
     previousInteractionId: string,
@@ -151,6 +176,24 @@ export class GoogleGeminiProvider implements GeminiProvider {
 
     return {
       interactionId: requiredProviderString(interaction.id, "Characters interaction ID"),
+      outputText: interaction.output_text,
+    };
+  }
+
+  async generateChapters(characterInteractionId: string): Promise<GeminiChapterOutput> {
+    const interaction = await this.getClient().interactions.create({
+      model: this.options.textModel,
+      input: CHAPTER_PROMPT,
+      previous_interaction_id: characterInteractionId,
+      response_format: {
+        type: "text",
+        mime_type: "application/json",
+        schema: CHAPTER_RESPONSE_SCHEMA,
+      },
+    });
+
+    return {
+      interactionId: requiredProviderString(interaction.id, "Chapters interaction ID"),
       outputText: interaction.output_text,
     };
   }

@@ -2,6 +2,7 @@ import path from "node:path";
 
 import express, { type NextFunction, type Request, type Response } from "express";
 
+import { ChapterProjectNotFoundError, ChapterService } from "./chapters.js";
 import { CharacterProjectNotFoundError, CharacterService } from "./characters.js";
 import { GoogleGeminiProvider, type GeminiProvider } from "./gemini.js";
 import { LocalStore, type User } from "./local-store.js";
@@ -76,6 +77,11 @@ export function createApp(options: AppOptions = {}): AppContext {
     new PipelineExecutor(pipeline),
   );
   const portraitService = new PortraitService(
+    store,
+    geminiProvider,
+    new PipelineExecutor(pipeline),
+  );
+  const chapterService = new ChapterService(
     store,
     geminiProvider,
     new PipelineExecutor(pipeline),
@@ -300,6 +306,52 @@ export function createApp(options: AppOptions = {}): AppContext {
       });
     } catch (error) {
       if (error instanceof PortraitProjectNotFoundError) {
+        response.status(404).json({ error: "Project not found." });
+        return;
+      }
+      if (error instanceof PipelineRuleError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/projects/:id/steps/chapters/run", requireUser, async (request, response) => {
+    const user = response.locals.user as User;
+    const projectId = request.params.id;
+
+    if (typeof projectId !== "string") {
+      response.status(404).json({ error: "Project not found." });
+      return;
+    }
+
+    try {
+      const result = await chapterService.execute(user.id, projectId);
+
+      if (result.execution.outcome === "ALREADY_RUNNING") {
+        response.status(409).json({
+          error: "Chapters are already running.",
+          step: result.execution.step,
+          chapters: result.chapters,
+        });
+        return;
+      }
+      if (result.execution.outcome === "FAILED") {
+        response.status(502).json({
+          error: result.execution.step.errorMessage ?? "Chapter generation failed.",
+          step: result.execution.step,
+          chapters: result.chapters,
+        });
+        return;
+      }
+
+      response.status(200).json({
+        step: result.execution.step,
+        chapters: result.chapters,
+      });
+    } catch (error) {
+      if (error instanceof ChapterProjectNotFoundError) {
         response.status(404).json({ error: "Project not found." });
         return;
       }
