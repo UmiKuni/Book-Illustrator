@@ -50,6 +50,11 @@ export interface ProjectDetail extends ProjectSummary {
   steps: PipelineStep[];
 }
 
+export interface ProjectMedia {
+  bytes: Uint8Array;
+  mimeType: string;
+}
+
 interface UserRow {
   id: string;
   name: string;
@@ -108,6 +113,11 @@ interface IllustrationProjectRow {
   id: string;
   image_interaction_id: string | null;
   chapter_image_context_id: string | null;
+}
+
+interface MediaRow {
+  media_path: string;
+  mime_type: string;
 }
 
 interface StyleProjectRow {
@@ -314,6 +324,14 @@ export class LocalStore
     this.database.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
   }
 
+  ownsProject(userId: string, projectId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare("SELECT 1 FROM projects WHERE id = ? AND user_id = ?")
+        .get(projectId, userId),
+    );
+  }
+
   listProjects(userId: string): ProjectSummary[] {
     const rows = this.database
       .prepare(`
@@ -396,6 +414,47 @@ export class LocalStore
       chapters: this.getChapters(projectId),
       steps,
     };
+  }
+
+  async getPortraitMedia(
+    userId: string,
+    projectId: string,
+    position: number,
+  ): Promise<ProjectMedia | undefined> {
+    const row = this.database
+      .prepare(`
+        SELECT characters.portrait_image_path AS media_path,
+               characters.portrait_mime_type AS mime_type
+        FROM characters
+        JOIN projects ON projects.id = characters.project_id
+        WHERE projects.id = ? AND projects.user_id = ? AND characters.position = ?
+          AND characters.portrait_state = 'SUCCEEDED'
+          AND characters.portrait_image_path IS NOT NULL
+          AND characters.portrait_mime_type IS NOT NULL
+      `)
+      .get(projectId, userId, position) as MediaRow | undefined;
+
+    return row ? this.readProjectMedia(projectId, row) : undefined;
+  }
+
+  async getIllustrationMedia(
+    userId: string,
+    projectId: string,
+    position: number,
+  ): Promise<ProjectMedia | undefined> {
+    const row = this.database
+      .prepare(`
+        SELECT chapters.illustration_image_path AS media_path,
+               chapters.illustration_mime_type AS mime_type
+        FROM chapters
+        JOIN projects ON projects.id = chapters.project_id
+        WHERE projects.id = ? AND projects.user_id = ? AND chapters.position = ?
+          AND chapters.illustration_image_path IS NOT NULL
+          AND chapters.illustration_mime_type IS NOT NULL
+      `)
+      .get(projectId, userId, position) as MediaRow | undefined;
+
+    return row ? this.readProjectMedia(projectId, row) : undefined;
   }
 
   getStyleProject(userId: string, projectId: string): StyleProjectContext | undefined {
@@ -890,6 +949,31 @@ export class LocalStore
       throw new Error("Stored path is outside the application data directory");
     }
     return absoluteBookPath;
+  }
+
+  private async readProjectMedia(
+    projectId: string,
+    media: MediaRow,
+  ): Promise<ProjectMedia | undefined> {
+    const absolutePath = this.resolveDataPath(media.media_path);
+    const projectDirectory = path.resolve(this.dataDirectory, "projects", projectId);
+    if (!absolutePath.startsWith(`${projectDirectory}${path.sep}`)) {
+      throw new Error("Stored media path is outside its project directory");
+    }
+
+    try {
+      return { bytes: await readFile(absolutePath), mimeType: media.mime_type };
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   private getCharacters(projectId: string): Character[] {

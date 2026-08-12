@@ -4,9 +4,10 @@
 
 Vitest and Supertest cover API behavior without opening a real network port.
 Current tests exercise `GET /health`, identity/session behavior, project
-persistence, validation, ownership isolation, pipeline ordering, persistent
-step transitions, failure/retry, duplicate execution prevention, and stale
-recovery. Style tests use a deterministic fake Gemini provider to cover book
+persistence, pasted and `.txt` project input, validation, ownership isolation,
+authorized media access, pipeline ordering, persistent step transitions,
+failure/retry, duplicate execution prevention, and stale recovery through the
+HTTP API. Style tests use a deterministic fake Gemini provider to cover book
 context reuse, persistence, provider failure, and overlapping requests.
 Character tests cover structured-output validation, the server-side two-record
 cap, context reuse, persistence, retry, ownership, and duplicate prevention.

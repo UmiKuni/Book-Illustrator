@@ -90,6 +90,70 @@ describe("identity and project persistence", () => {
     ).resolves.toBe("  Once beside the river...  ");
   });
 
+  it("creates a project from a readable .txt upload using the existing book storage", async () => {
+    const agent = request.agent(context.app);
+    expect((await signIn(agent, "Mira Hassan", "mira@example.com")).status).toBe(200);
+    const bookText = "Chapter One\n\nMole stepped into the sunlight. ☀";
+
+    const created = await agent
+      .post("/api/projects")
+      .field("title", "Uploaded River Story")
+      .attach("book", Buffer.from(bookText, "utf8"), {
+        filename: "river-story.txt",
+        contentType: "text/plain",
+      })
+      .expect(201);
+
+    expect(created.body.project).toMatchObject({
+      title: "Uploaded River Story",
+      bookText,
+      status: "Draft",
+    });
+    const projectId = created.body.project.id as string;
+    const detail = await agent.get(`/api/projects/${projectId}`).expect(200);
+    expect(detail.body.project.bookText).toBe(bookText);
+    await expect(
+      readFile(path.join(dataDirectory, "projects", projectId, "book.txt"), "utf8"),
+    ).resolves.toBe(bookText);
+  });
+
+  it.each([
+    ["a missing file", undefined, undefined],
+    ["an empty file", Buffer.alloc(0), "empty.txt"],
+    ["a non-.txt file", Buffer.from("Readable text"), "book.md"],
+    ["unreadable UTF-8", Buffer.from([0xc3, 0x28]), "book.txt"],
+  ])("rejects %s in multipart project creation", async (_caseName, contents, filename) => {
+    const agent = request.agent(context.app);
+    expect((await signIn(agent, "Mira Hassan", "mira@example.com")).status).toBe(200);
+    let projectRequest = agent.post("/api/projects").field("title", "Invalid Upload");
+    if (contents && filename) {
+      projectRequest = projectRequest.attach("book", contents, {
+        filename,
+        contentType: filename.endsWith(".txt") ? "text/plain" : "text/markdown",
+      });
+    }
+
+    await projectRequest.expect(400);
+    const projects = await agent.get("/api/projects").expect(200);
+    expect(projects.body.projects).toEqual([]);
+  });
+
+  it("rejects a .txt upload above the bounded size limit", async () => {
+    const agent = request.agent(context.app);
+    expect((await signIn(agent, "Mira Hassan", "mira@example.com")).status).toBe(200);
+
+    const response = await agent
+      .post("/api/projects")
+      .field("title", "Oversized Upload")
+      .attach("book", Buffer.alloc(10 * 1024 * 1024 + 1, "a"), {
+        filename: "large.txt",
+        contentType: "text/plain",
+      })
+      .expect(413);
+
+    expect(response.body.error).toBe("The uploaded book exceeds the 10 MB limit.");
+  });
+
   it("does not expose one user's project to another user", async () => {
     const owner = request.agent(context.app);
     const otherUser = request.agent(context.app);
