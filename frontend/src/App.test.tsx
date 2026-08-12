@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -98,13 +98,28 @@ function renderProjectDetail() {
   )
 }
 
+function capturePollingInterval() {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval')
+
+  return async () => {
+    const intervalCall = setIntervalSpy.mock.calls.find(([, timeout]) => timeout === 1_250)
+    const callback = intervalCall?.[0]
+    expect(callback).toBeDefined()
+    await act(async () => {
+      if (typeof callback === 'function') callback()
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+    })
+  }
+}
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe('project pipeline', () => {
-  it('renders persisted style, characters, chapters, and the correct current action', async () => {
+  it('groups persisted output into three tabs while keeping the five-step progress visible', async () => {
     const value = project({
       completedSteps: 4,
       style: 'Luminous gouache with restrained indigo shadows and fine copper linework.',
@@ -126,15 +141,97 @@ describe('project pipeline', () => {
     renderProjectDetail()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'The Lantern Atlas' })).toBeInTheDocument()
-    expect(screen.getByText(/Luminous gouache/)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Ada Vale' })).toBeInTheDocument()
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      '01Visual Direction',
+      '02Character Studies',
+      '03Chapter Illustration',
+    ])
+    expect(screen.getByRole('tab', { name: /Chapter Illustration/ })).toHaveAttribute('aria-selected', 'true')
+
+    const stepper = screen.getByRole('navigation', { name: 'Illustration pipeline' })
+    for (const label of ['Style', 'Characters', 'Portraits', 'Chapters', 'Illustrations']) {
+      expect(within(stepper).getByText(label)).toBeInTheDocument()
+    }
+
     expect(screen.getByRole('heading', { name: 'Arrival at the House' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Illustration for Arrival at the House' })).toHaveAttribute(
       'src',
       '/api/projects/project-1/chapters/0/illustration',
     )
+
+    fireEvent.click(screen.getByRole('tab', { name: /Character Studies/ }))
+    expect(screen.getByRole('heading', { name: 'Ada Vale' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: /Visual Direction/ }))
+    expect(screen.getByText(/Luminous gouache/)).toBeInTheDocument()
+
     expect(screen.getByText(/The old map waited beneath the floorboards/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Generate Illustration' })).toBeEnabled()
+  })
+
+  it('renders saved Visual Direction Markdown as semantic HTML', async () => {
+    mockProject(project({
+      completedSteps: 1,
+      style: '### Palette\n\nUse **warm amber** with *quiet indigo*.\n\n- Fine ink lines\n- Soft paper grain',
+      steps: steps({ STYLE: 'SUCCEEDED' }),
+    }))
+
+    renderProjectDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: /Visual Direction/ }))
+
+    expect(screen.getByRole('heading', { level: 3, name: 'Palette' })).toBeInTheDocument()
+    expect(screen.getByText('warm amber').tagName).toBe('STRONG')
+    expect(screen.getByText('quiet indigo').tagName).toBe('EM')
+    expect(screen.queryByText('### Palette')).not.toBeInTheDocument()
+  })
+
+  it('defaults to the tab containing the current pipeline step', async () => {
+    mockProject(project({
+      completedSteps: 2,
+      characters: [ada, ben],
+      steps: steps({
+        STYLE: 'SUCCEEDED',
+        CHARACTERS: 'SUCCEEDED',
+        PORTRAITS: 'RUNNING',
+      }),
+    }))
+
+    renderProjectDetail()
+
+    const characterTab = await screen.findByRole('tab', { name: /Character Studies/ })
+    expect(characterTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('img', { name: 'Ada Vale portrait' })).toBeInTheDocument()
+
+    fireEvent.keyDown(characterTab, { key: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: /Visual Direction/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Visual Direction/ })).toHaveFocus()
+  })
+
+  it('does not force a manually selected earlier tab back during polling', async () => {
+    const running = project({
+      completedSteps: 3,
+      style: 'A saved visual direction.',
+      chapters: [chapter],
+      steps: steps({
+        STYLE: 'SUCCEEDED',
+        CHARACTERS: 'SUCCEEDED',
+        PORTRAITS: 'SUCCEEDED',
+        CHAPTERS: 'RUNNING',
+      }),
+    })
+    const fetchMock = mockProject(running)
+    const runPoll = capturePollingInterval()
+    renderProjectDetail()
+
+    const visualTab = await screen.findByRole('tab', { name: /Visual Direction/ })
+    expect(screen.getByRole('tab', { name: /Chapter Illustration/ })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(visualTab)
+    expect(visualTab).toHaveAttribute('aria-selected', 'true')
+
+    await runPoll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(visualTab).toHaveAttribute('aria-selected', 'true')
   })
 
   it('shows which persisted pipeline step is running', async () => {

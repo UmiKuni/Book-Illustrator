@@ -25,6 +25,20 @@ async function signIn(agent: ReturnType<typeof request.agent>, name: string, ema
 }
 
 describe("identity and project persistence", () => {
+  it("returns the current user for a valid session and rejects invalid sessions", async () => {
+    const agent = request.agent(context.app);
+    const signedIn = await signIn(agent, "Mira Hassan", "mira@example.com");
+
+    const currentSession = await agent.get("/api/session").expect(200);
+    expect(currentSession.body).toEqual({ user: signedIn.body.user });
+
+    await request(context.app).get("/api/session").expect(401);
+    await request(context.app)
+      .get("/api/session")
+      .set("Cookie", "book_studio_session=invalid")
+      .expect(401);
+  });
+
   it("creates and resumes the same user by normalized email", async () => {
     const firstAgent = request.agent(context.app);
     const firstSignIn = await signIn(firstAgent, "Mira Hassan", "Mira@Example.com");

@@ -187,6 +187,10 @@ export function createApp(options: AppOptions = {}): AppContext {
     next();
   };
 
+  app.get("/api/session", requireUser, (_request, response) => {
+    response.status(200).json({ user: response.locals.user as User });
+  });
+
   app.get("/api/projects", requireUser, (_request, response) => {
     const user = response.locals.user as User;
     response.status(200).json({ projects: store.listProjects(user.id) });

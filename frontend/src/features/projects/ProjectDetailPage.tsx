@@ -196,11 +196,7 @@ export function ProjectDetailPage({ projectId, onUnauthorized }: ProjectDetailPa
   return (
     <div className="project-detail-view">
       <div className="detail-context-bar">
-        <Link className="back-link" to="/projects"><span aria-hidden="true">←</span> Project library</Link>
-        <div className="project-status" aria-label={`${project.completedSteps} of ${project.totalSteps} steps complete`}>
-          <span className={`status-dot status-${project.status.toLowerCase().replace(' ', '-')}`} />
-          {project.status} · {project.completedSteps}/{project.totalSteps}
-        </div>
+        <Link className="back-link" to="/projects"><span aria-hidden="true">←</span> Project Library</Link>
       </div>
 
       <main className="project-page">
@@ -209,10 +205,6 @@ export function ProjectDetailPage({ projectId, onUnauthorized }: ProjectDetailPa
             <span className="eyebrow">Illustration project</span>
             <h1 id="project-title">{project.title}</h1>
             <p className="project-date">Created {formatDate(project.createdAt)}</p>
-          </div>
-          <div className="progress-number" aria-hidden="true">
-            <strong>{project.completedSteps}</strong>
-            <span>of {project.totalSteps}</span>
           </div>
         </section>
 
@@ -237,7 +229,7 @@ export function ProjectDetailPage({ projectId, onUnauthorized }: ProjectDetailPa
               onRecover={() => void recoverRunningStep()}
             />
 
-            <GeneratedOutputs project={project} />
+            <GeneratedOutputs key={project.id} project={project} />
           </div>
 
           <BookPanel title={project.title} text={project.bookText} />

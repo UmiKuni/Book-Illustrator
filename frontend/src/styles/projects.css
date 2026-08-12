@@ -1,7 +1,7 @@
 .app-page {
   width: min(1120px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 62px 0 96px;
+  padding: 48px 0 84px;
 }
 
 .page-heading {
@@ -15,7 +15,7 @@
 .page-heading h1 {
   margin: 0;
   font-family: var(--serif);
-  font-size: clamp(2.75rem, 6vw, 5.25rem);
+  font-size: clamp(2.5rem, 5vw, 4.35rem);
   font-weight: 500;
   letter-spacing: -0.045em;
   line-height: 1;
@@ -85,15 +85,9 @@
   margin: 0 0 4px;
 }
 
-.inline-action {
-  border: 0;
-  padding: 0;
+.library-feedback small {
   color: inherit;
-  background: transparent;
   font-size: 11px;
-  font-weight: 800;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .library-empty {
@@ -146,17 +140,13 @@
   transition: opacity 160ms ease;
 }
 
-.project-library.is-refreshing {
-  opacity: 0.62;
-}
-
 .library-project-card {
   display: flex;
-  min-height: 250px;
+  min-height: 220px;
   flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 7px;
-  padding: 25px;
+  padding: 22px;
   color: var(--ink);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
@@ -207,15 +197,15 @@
 }
 
 .library-project-card h2 {
-  margin: 31px 0 auto;
+  margin: 25px 0 auto;
   font-family: var(--serif);
-  font-size: 29px;
+  font-size: 26px;
   font-weight: 500;
   line-height: 1.15;
 }
 
 .library-progress {
-  margin-top: 32px;
+  margin-top: 26px;
 }
 
 .progress-label {

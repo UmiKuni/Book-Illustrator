@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './app/App'
@@ -22,6 +22,12 @@ function response(body: unknown, options: MockResponseOptions = {}): Response {
       ? vi.fn().mockRejectedValue(new Error('No body'))
       : vi.fn().mockResolvedValue(body),
   } as unknown as Response
+}
+
+const sessionUser = {
+  id: 'user-1',
+  name: 'Mira Hassan',
+  email: 'mira@example.com',
 }
 
 const draftProject: ProjectSummary = {
@@ -73,7 +79,32 @@ function inputIdentity() {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: '  mira@example.com  ' } })
 }
 
+function isSessionRead(input: RequestInfo | URL, init?: RequestInit): boolean {
+  return String(input) === '/api/session' && !init?.method
+}
+
+function capturePollingInterval() {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval')
+
+  function intervalCallIndex(): number {
+    return setIntervalSpy.mock.calls.findIndex(([, timeout]) => timeout === 2_500)
+  }
+
+  return {
+    timerId: () => setIntervalSpy.mock.results[intervalCallIndex()]?.value,
+    run: async () => {
+      const callback = setIntervalSpy.mock.calls[intervalCallIndex()]?.[0]
+      expect(callback).toBeDefined()
+      await act(async () => {
+        if (typeof callback === 'function') callback()
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+      })
+    },
+  }
+}
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.history.replaceState(null, '', '/')
@@ -109,16 +140,20 @@ describe('application flows', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('signs in with trimmed identity and opens the Project Library', async () => {
+  it('signs in with trimmed identity, opens the library, and shows the user name', async () => {
     let signedIn = false
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       if (String(input) === '/api/session' && init?.method === 'POST') {
         signedIn = true
-        return response({ user: { id: 'user-1', name: 'Mira Hassan', email: 'mira@example.com' } })
+        return response({ user: sessionUser })
       }
-      return signedIn
-        ? response({ projects: [draftProject] })
-        : response({ error: 'Authentication required.' }, { status: 401 })
+      if (isSessionRead(input, init)) {
+        return response({ error: 'Authentication required.' }, { status: 401 })
+      }
+      if (String(input) === '/api/projects' && signedIn) {
+        return response({ projects: [draftProject] })
+      }
+      throw new Error(`Unexpected request: ${String(input)}`)
     })
     vi.stubGlobal('fetch', fetchMock)
     visit('/')
@@ -128,27 +163,37 @@ describe('application flows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue to projects' }))
 
     expect(await screen.findByRole('heading', { name: 'Project Library' })).toBeInTheDocument()
+    expect(within(screen.getByRole('banner')).getByText('Mira Hassan')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'The Lantern Atlas' })).toBeInTheDocument()
     const sessionCall = fetchMock.mock.calls.find(([input, init]) => String(input) === '/api/session' && init?.method === 'POST')
     expect(sessionCall?.[1]?.body).toBe(JSON.stringify({ name: 'Mira Hassan', email: 'mira@example.com' }))
   })
 
-  it('loads an existing project list directly from a valid session', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      response({ projects: [draftProject, activeProject] }),
-    )
+  it('restores the current user after refresh and keeps the topbar essential', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      if (String(input) === '/api/projects') return response({ projects: [draftProject, activeProject] })
+      throw new Error(`Unexpected request: ${String(input)}`)
+    })
     vi.stubGlobal('fetch', fetchMock)
     visit('/projects')
 
     expect(await screen.findByRole('heading', { name: 'Project Library' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Open your studio' })).not.toBeInTheDocument()
+    const topbar = screen.getByRole('banner')
+    expect(within(topbar).getByRole('link', { name: 'Book Illustration Studio' })).toHaveAttribute('href', '/projects')
+    expect(within(topbar).getByText('Mira Hassan')).toBeInTheDocument()
+    expect(within(topbar).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(within(topbar).queryByRole('link', { name: 'Projects' })).not.toBeInTheDocument()
+    expect(within(topbar).queryByRole('link', { name: 'New project' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'The Clockmaker Sea' })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects', expect.objectContaining({ credentials: 'include' }))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('shows an empty library with a New Project action', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(response({ projects: [] })))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      return response({ projects: [] })
+    }))
     visit('/projects')
 
     expect(await screen.findByRole('heading', { name: 'Your first story starts here.' })).toBeInTheDocument()
@@ -157,11 +202,12 @@ describe('application flows', () => {
 
   it('renders project status and five-step progress and opens a project', async () => {
     const detail = { ...createdProject(activeProject.id), ...activeProject, bookText: 'A saved sea story.' }
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input) =>
-      String(input) === '/api/projects/project-2'
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      return String(input) === '/api/projects/project-2'
         ? response({ project: detail })
-        : response({ projects: [activeProject] }),
-    ))
+        : response({ projects: [activeProject] })
+    }))
     visit('/projects')
 
     const card = (await screen.findByRole('heading', { name: 'The Clockmaker Sea' })).closest('a')
@@ -178,6 +224,7 @@ describe('application flows', () => {
   it('creates a pasted-text project with trimmed JSON and navigates to detail', async () => {
     const created = createdProject('new-text-project')
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
       if (String(input) === '/api/projects' && init?.method === 'POST') {
         return response({ project: created }, { status: 201 })
       }
@@ -202,6 +249,7 @@ describe('application flows', () => {
   it('creates a project from FormData containing title and book', async () => {
     const created = createdProject('new-file-project')
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
       if (String(input) === '/api/projects' && init?.method === 'POST') {
         return response({ project: created }, { status: 201 })
       }
@@ -231,6 +279,7 @@ describe('application flows', () => {
   it('calls the backend to sign out and returns to Identity', async () => {
     let signedOut = false
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
       if (String(input) === '/api/session' && init?.method === 'DELETE') {
         signedOut = true
         return response(null, { status: 204, noContent: true })
@@ -244,12 +293,12 @@ describe('application flows', () => {
 
     expect(await screen.findByRole('heading', { name: 'Open your studio' })).toBeInTheDocument()
     expect(signedOut).toBe(true)
-    expect(fetchMock.mock.calls.some(([input, init]) => String(input) === '/api/session' && init?.method === 'DELETE')).toBe(true)
   })
 
   it('returns to Identity when an authenticated project refresh returns 401', async () => {
     let projectRequests = 0
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
       if (String(input) === '/api/projects') return response({ projects: [draftProject] })
       if (String(input) === '/api/projects/project-1') {
         projectRequests += 1
@@ -262,5 +311,92 @@ describe('application flows', () => {
 
     expect(await screen.findByRole('heading', { name: 'Open your studio' })).toBeInTheDocument()
     await waitFor(() => expect(projectRequests).toBe(1))
+  })
+
+  it('automatically refreshes Project Library progress', async () => {
+    let projectListRequests = 0
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      if (String(input) === '/api/projects') {
+        projectListRequests += 1
+        return response({ projects: [projectListRequests === 1 ? draftProject : activeProject] })
+      }
+      throw new Error(`Unexpected request: ${String(input)}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const polling = capturePollingInterval()
+    visit('/projects')
+    await screen.findByRole('heading', { name: 'The Lantern Atlas' })
+
+    await polling.run()
+
+    expect(screen.getByRole('heading', { name: 'The Clockmaker Sea' })).toBeInTheDocument()
+    expect(screen.getByText('3 of 5')).toBeInTheDocument()
+    expect(projectListRequests).toBe(2)
+  })
+
+  it('keeps the last successful library visible after a transient background failure', async () => {
+    let projectListRequests = 0
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      if (String(input) === '/api/projects') {
+        projectListRequests += 1
+        return projectListRequests === 1
+          ? response({ projects: [draftProject] })
+          : response({ error: 'Temporary backend problem.' }, { status: 500 })
+      }
+      throw new Error(`Unexpected request: ${String(input)}`)
+    }))
+    const polling = capturePollingInterval()
+    visit('/projects')
+    await screen.findByRole('heading', { name: 'The Lantern Atlas' })
+
+    await polling.run()
+
+    expect(screen.getByRole('heading', { name: 'The Lantern Atlas' })).toBeInTheDocument()
+    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(screen.getByText(/Could not refresh the library/)).toBeInTheDocument()
+  })
+
+  it('stops Project Library polling after unmount', async () => {
+    let projectListRequests = 0
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      if (String(input) === '/api/projects') {
+        projectListRequests += 1
+        return response({ projects: [draftProject] })
+      }
+      throw new Error(`Unexpected request: ${String(input)}`)
+    }))
+    const polling = capturePollingInterval()
+    const clearIntervalSpy = vi.spyOn(window, 'clearInterval')
+    const view = visit('/projects')
+    await screen.findByRole('heading', { name: 'The Lantern Atlas' })
+    view.unmount()
+
+    expect(projectListRequests).toBe(1)
+    expect(clearIntervalSpy).toHaveBeenCalledWith(polling.timerId())
+  })
+
+  it('returns to Identity when Project Library auto-refresh receives 401', async () => {
+    let projectListRequests = 0
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) return response({ user: sessionUser })
+      if (String(input) === '/api/projects') {
+        projectListRequests += 1
+        return projectListRequests === 1
+          ? response({ projects: [draftProject] })
+          : response({ error: 'Authentication required.' }, { status: 401 })
+      }
+      throw new Error(`Unexpected request: ${String(input)}`)
+    }))
+    const polling = capturePollingInterval()
+    visit('/projects')
+    await screen.findByRole('heading', { name: 'The Lantern Atlas' })
+
+    await polling.run()
+
+    expect(screen.getByRole('heading', { name: 'Open your studio' })).toBeInTheDocument()
+    expect(projectListRequests).toBe(2)
   })
 })

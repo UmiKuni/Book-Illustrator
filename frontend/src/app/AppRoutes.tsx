@@ -7,6 +7,10 @@ import {
   useParams,
 } from 'react-router-dom'
 
+import {
+  getCurrentSession,
+  type SessionUser,
+} from '../features/auth/auth.api'
 import { IdentityPage } from '../features/auth/IdentityPage'
 import { NewProjectPage } from '../features/projects/NewProjectPage'
 import { ProjectDetailPage } from '../features/projects/ProjectDetailPage'
@@ -21,40 +25,51 @@ type BootstrapState = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
 export function AppRoutes() {
   const navigate = useNavigate()
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>('loading')
+  const [user, setUser] = useState<SessionUser | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
 
-  const loadApplication = useCallback(() => {
+  const loadApplication = useCallback(async (knownUser?: SessionUser) => {
     setBootstrapState('loading')
     setBootstrapError(null)
-    void listProjects()
-      .then((nextProjects) => {
-        setProjects(nextProjects)
-        setBootstrapState('authenticated')
-      })
-      .catch((error: unknown) => {
-        if (error instanceof ApiError && error.status === 401) {
-          setProjects([])
-          setBootstrapState('unauthenticated')
-          return
-        }
-        setBootstrapError(error instanceof Error ? error.message : 'Could not open the application.')
-        setBootstrapState('error')
-      })
+
+    try {
+      const currentUser = knownUser ?? await getCurrentSession()
+      const nextProjects = await listProjects()
+      setUser(currentUser)
+      setProjects(nextProjects)
+      setBootstrapState('authenticated')
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 401) {
+        setUser(null)
+        setProjects([])
+        setBootstrapState('unauthenticated')
+        return
+      }
+
+      setBootstrapError(error instanceof Error ? error.message : 'Could not open the application.')
+      setBootstrapState('error')
+    }
   }, [])
 
   useEffect(() => {
     let cancelled = false
 
-    void listProjects()
-      .then((nextProjects) => {
+    void getCurrentSession()
+      .then(async (currentUser) => ({
+        currentUser,
+        nextProjects: await listProjects(),
+      }))
+      .then(({ currentUser, nextProjects }) => {
         if (cancelled) return
+        setUser(currentUser)
         setProjects(nextProjects)
         setBootstrapState('authenticated')
       })
       .catch((error: unknown) => {
         if (cancelled) return
         if (error instanceof ApiError && error.status === 401) {
+          setUser(null)
           setProjects([])
           setBootstrapState('unauthenticated')
           return
@@ -68,36 +83,37 @@ export function AppRoutes() {
     }
   }, [])
 
-  function handleSessionStarted() {
+  const handleSessionStarted = useCallback((sessionUser: SessionUser) => {
     navigate('/projects', { replace: true })
-    loadApplication()
-  }
+    void loadApplication(sessionUser)
+  }, [loadApplication, navigate])
 
-  function handleUnauthorized() {
+  const handleUnauthorized = useCallback(() => {
+    setUser(null)
     setProjects([])
     setBootstrapError(null)
     setBootstrapState('unauthenticated')
-  }
+  }, [])
 
-  function addProject(project: ProjectDetail) {
+  const addProject = useCallback((project: ProjectDetail) => {
     setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)])
-  }
+  }, [])
 
   if (bootstrapState === 'loading') {
     return <ApplicationLoading />
   }
 
   if (bootstrapState === 'error') {
-    return <ApplicationError message={bootstrapError} onRetry={loadApplication} />
+    return <ApplicationError message={bootstrapError} onRetry={() => void loadApplication()} />
   }
 
-  if (bootstrapState === 'unauthenticated') {
+  if (bootstrapState === 'unauthenticated' || !user) {
     return <IdentityPage onSessionStarted={handleSessionStarted} />
   }
 
   return (
     <Routes>
-      <Route element={<AuthenticatedShell onSignedOut={handleUnauthorized} />}>
+      <Route element={<AuthenticatedShell user={user} onSignedOut={handleUnauthorized} />}>
         <Route index element={<Navigate replace to="/projects" />} />
         <Route
           path="projects"

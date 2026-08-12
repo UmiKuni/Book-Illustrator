@@ -1,11 +1,16 @@
 import { useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useNavigate } from 'react-router-dom'
 
-import { endSession } from '../features/auth/auth.api'
+import { endSession, type SessionUser } from '../features/auth/auth.api'
 
-export function AuthenticatedShell({ onSignedOut }: { onSignedOut: () => void }) {
+export function AuthenticatedShell({
+  user,
+  onSignedOut,
+}: {
+  user: SessionUser
+  onSignedOut: () => void
+}) {
   const navigate = useNavigate()
-  const location = useLocation()
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState<string | null>(null)
 
@@ -27,20 +32,19 @@ export function AuthenticatedShell({ onSignedOut }: { onSignedOut: () => void })
   return (
     <div className="studio-shell">
       <header className="studio-header app-header">
-        <Link className="brand" to="/projects" aria-label="Book Illustration Studio projects">
+        <Link className="brand" to="/projects" aria-label="Book Illustration Studio">
           <span className="brand-mark" aria-hidden="true">B</span>
           <span>
             <strong>Book Illustration</strong>
             <small>Studio</small>
           </span>
         </Link>
-        <nav className="app-navigation" aria-label="Primary navigation">
-          <Link className={location.pathname === '/projects' ? 'active' : ''} to="/projects">Projects</Link>
-          <Link className={location.pathname === '/projects/new' ? 'active' : ''} to="/projects/new">New project</Link>
+        <div className="session-controls">
+          <span className="session-user" title={user.email}>{user.name}</span>
           <button type="button" onClick={() => void signOut()} disabled={signingOut}>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
-        </nav>
+        </div>
       </header>
       {signOutError && (
         <div className="shell-error" role="alert">

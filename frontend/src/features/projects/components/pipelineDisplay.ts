@@ -33,7 +33,7 @@ export const STEP_COPY: Record<
     description: 'Choose the key scene and prepare its illustration prompt.',
   },
   ILLUSTRATIONS: {
-    label: 'Illustration',
+    label: 'Illustrations',
     action: 'Generate Illustration',
     running: 'Generating Illustration',
     description: 'Turn the saved chapter scene into the final artwork.',

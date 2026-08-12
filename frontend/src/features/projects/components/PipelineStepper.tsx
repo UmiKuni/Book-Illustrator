@@ -15,7 +15,12 @@ export function PipelineStepper({
           const isActive = activeStep?.name === step.name
           const visualState = step.state === 'SUCCEEDED' ? 'done' : isActive ? 'current' : 'pending'
           return (
-            <li className={`pipeline-step step-${visualState}`} key={step.name} aria-current={isActive ? 'step' : undefined}>
+            <li
+              className={`pipeline-step step-${visualState} state-${step.state.toLowerCase()}`}
+              key={step.name}
+              aria-current={isActive ? 'step' : undefined}
+              aria-label={`${STEP_COPY[step.name].label}: ${humanState(step.state)}`}
+            >
               <span className="step-marker" aria-hidden="true">
                 {step.state === 'SUCCEEDED' ? '✓' : index + 1}
               </span>

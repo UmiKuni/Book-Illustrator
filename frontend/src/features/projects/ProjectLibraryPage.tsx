@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { ApiError } from '../../shared/api/client'
 import { ProjectCard } from './components/ProjectCard'
 import { listProjects } from './projects.api'
 import type { ProjectSummary } from './projects.types'
+
+const LIBRARY_POLL_INTERVAL_MS = 2_500
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message
@@ -23,25 +25,42 @@ export function ProjectLibraryPage({
   onProjectsLoaded,
   onUnauthorized,
 }: ProjectLibraryPageProps) {
-  const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const requestInFlight = useRef(false)
 
-  async function refresh() {
-    if (refreshing) return
-    setRefreshing(true)
-    setRefreshError(null)
-    try {
-      onProjectsLoaded(await listProjects())
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        onUnauthorized()
-        return
+  useEffect(() => {
+    let active = true
+
+    async function refreshInBackground() {
+      if (requestInFlight.current) return
+      requestInFlight.current = true
+
+      try {
+        const nextProjects = await listProjects()
+        if (!active) return
+        onProjectsLoaded(nextProjects)
+        setRefreshError(null)
+      } catch (error) {
+        if (!active) return
+        if (error instanceof ApiError && error.status === 401) {
+          onUnauthorized()
+          return
+        }
+        setRefreshError(errorMessage(error))
+      } finally {
+        requestInFlight.current = false
       }
-      setRefreshError(errorMessage(error))
-    } finally {
-      setRefreshing(false)
     }
-  }
+
+    const timer = window.setInterval(() => {
+      void refreshInBackground()
+    }, LIBRARY_POLL_INTERVAL_MS)
+
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [onProjectsLoaded, onUnauthorized])
 
   return (
     <main className="library-page app-page">
@@ -52,19 +71,16 @@ export function ProjectLibraryPage({
           <p>Return to a story exactly where its illustration work was saved.</p>
         </div>
         <div className="library-actions">
-          <button className="button button-quiet" type="button" onClick={() => void refresh()} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
           <Link className="button button-primary" to="/projects/new">New project</Link>
         </div>
       </section>
 
       {refreshError && (
-        <div className="feedback feedback-error library-feedback" role="alert">
+        <div className="feedback feedback-error library-feedback" role="status">
           <span aria-hidden="true">!</span>
           <div>
-            <p>{refreshError}</p>
-            <button className="inline-action" type="button" onClick={() => void refresh()}>Try again</button>
+            <p>Could not refresh the library. {refreshError}</p>
+            <small>Your last loaded projects remain visible; the studio will try again.</small>
           </div>
         </div>
       )}
@@ -78,7 +94,7 @@ export function ProjectLibraryPage({
           <Link className="button button-primary" to="/projects/new">Create your first project</Link>
         </section>
       ) : (
-        <section className={`project-library ${refreshing ? 'is-refreshing' : ''}`} aria-label="Saved projects">
+        <section className="project-library" aria-label="Saved projects">
           {projects.map((project) => <ProjectCard key={project.id} project={project} />)}
         </section>
       )}

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 
 import { ApiError } from '../../shared/api/client'
-import { startSession } from './auth.api'
+import { startSession, type SessionUser } from './auth.api'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -11,7 +11,7 @@ function errorMessage(error: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
-export function IdentityPage({ onSessionStarted }: { onSessionStarted: () => void }) {
+export function IdentityPage({ onSessionStarted }: { onSessionStarted: (user: SessionUser) => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string }>({})
@@ -39,8 +39,8 @@ export function IdentityPage({ onSessionStarted }: { onSessionStarted: () => voi
 
     setSubmitting(true)
     try {
-      await startSession(trimmedName, trimmedEmail)
-      onSessionStarted()
+      const user = await startSession(trimmedName, trimmedEmail)
+      onSessionStarted(user)
     } catch (error) {
       setSubmitError(errorMessage(error))
     } finally {
