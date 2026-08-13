@@ -1,10 +1,10 @@
 import type { Character, PortraitState } from "./characters.js";
-import type { GeminiProvider } from "./gemini.js";
+import type { GeminiProvider } from "../../../integrations/gemini/gemini.js";
 import {
   PipelineExecutor,
   type PipelineExecutionResult,
   type PipelineRepository,
-} from "./pipeline.js";
+} from "../pipeline.js";
 
 const IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
   "image/jpeg": "jpg",

@@ -5,17 +5,24 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
-import type { Chapter, ChapterProjectContext, ChapterRepository } from "./chapters.js";
+import type {
+  Chapter,
+  ChapterProjectContext,
+  ChapterRepository,
+} from "../../features/pipeline/steps/chapters.js";
 import type {
   Character,
   CharacterProjectContext,
   CharacterRepository,
-} from "./characters.js";
+} from "../../features/pipeline/steps/characters.js";
 import type {
   IllustrationProjectContext,
   IllustrationRepository,
-} from "./illustrations.js";
-import type { PortraitProjectContext, PortraitRepository } from "./portraits.js";
+} from "../../features/pipeline/steps/illustrations.js";
+import type {
+  PortraitProjectContext,
+  PortraitRepository,
+} from "../../features/pipeline/steps/portraits.js";
 import {
   deriveProjectProgress,
   PIPELINE_STEP_NAMES,
@@ -24,8 +31,11 @@ import {
   type PipelineStepState,
   type PipelineMutationResult,
   type ProjectStatus,
-} from "./pipeline.js";
-import type { StyleProjectContext, StyleRepository } from "./style.js";
+} from "../../features/pipeline/pipeline.js";
+import type {
+  StyleProjectContext,
+  StyleRepository,
+} from "../../features/pipeline/steps/style.js";
 
 export interface User {
   id: string;

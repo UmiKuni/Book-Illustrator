@@ -4,12 +4,12 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { LocalStore } from "../src/local-store.js";
+import { LocalStore } from "../src/infrastructure/persistence/local-store.js";
 import {
   PIPELINE_STEP_NAMES,
   PipelineRuleError,
   PipelineService,
-} from "../src/pipeline.js";
+} from "../src/features/pipeline/pipeline.js";
 
 let dataDirectory: string;
 let store: LocalStore;

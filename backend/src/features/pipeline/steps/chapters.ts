@@ -1,9 +1,9 @@
-import type { GeminiProvider } from "./gemini.js";
+import type { GeminiProvider } from "../../../integrations/gemini/gemini.js";
 import {
   PipelineExecutor,
   type PipelineExecutionResult,
   type PipelineRepository,
-} from "./pipeline.js";
+} from "../pipeline.js";
 
 const MAX_CHAPTERS = 1;
 

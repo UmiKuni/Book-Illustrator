@@ -6,7 +6,7 @@ import path from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp, type AppContext } from "../src/app.js";
+import { createApp, type AppContext } from "../src/app/create-app.js";
 import type {
   GeminiBookReference,
   GeminiChapterOutput,
@@ -15,9 +15,9 @@ import type {
   GeminiImageOutput,
   GeminiInteractionReference,
   GeminiProvider,
-} from "../src/gemini.js";
-import { LocalStore } from "../src/local-store.js";
-import { PipelineRuleError, PipelineService } from "../src/pipeline.js";
+} from "../src/integrations/gemini/gemini.js";
+import { LocalStore } from "../src/infrastructure/persistence/local-store.js";
+import { PipelineRuleError, PipelineService } from "../src/features/pipeline/pipeline.js";
 
 interface Deferred {
   promise: Promise<void>;

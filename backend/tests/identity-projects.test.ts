@@ -5,7 +5,7 @@ import path from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp, type AppContext } from "../src/app.js";
+import { createApp, type AppContext } from "../src/app/create-app.js";
 
 let context: AppContext;
 let dataDirectory: string;
