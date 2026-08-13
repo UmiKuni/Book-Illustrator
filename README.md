@@ -1,5 +1,19 @@
 # Book Illustration Studio
 
+## Screenshots
+
+### Identity
+
+![Book Illustration Studio identity screen](frontend/public/Screenshot_login.png)
+
+### Project Library
+
+![Book Illustration Studio project library](frontend/public/Screenshot_home.png)
+
+### Completed Project
+
+![Completed five-stage illustration project](frontend/public/Screenshot_project.png)
+
 ## Technology
 
 - React, Vite, and TypeScript in `frontend/`
