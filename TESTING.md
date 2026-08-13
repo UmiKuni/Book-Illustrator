@@ -31,13 +31,13 @@ $env:NO_COLOR='1'; npm test
 
  RUN  v3.2.7 F:/technical_assignment/frontend
 
- ✓ src/App.test.tsx (11 tests) 978ms
- ✓ src/ApplicationFlows.test.tsx (15 tests) 1230ms
+ ✓ src/App.test.tsx (11 tests) 1244ms
+ ✓ src/ApplicationFlows.test.tsx (15 tests) 1585ms
 
  Test Files  2 passed (2)
       Tests  26 passed (26)
-   Start at  17:36:41
-   Duration  3.38s (transform 292ms, setup 480ms, collect 880ms, tests 2.21s, environment 1.81s, prepare 418ms)
+   Start at  17:44:50
+   Duration  3.87s (transform 324ms, setup 586ms, collect 1.06s, tests 2.83s, environment 1.82s, prepare 329ms)
 
 
 > backend@1.0.0 test
@@ -46,19 +46,19 @@ $env:NO_COLOR='1'; npm test
 
  RUN  v3.2.7 F:/technical_assignment/backend
 
- ✓ tests/pipeline.test.ts (5 tests) 247ms
- ✓ tests/pipeline-reliability.test.ts (6 tests) 271ms
- ✓ tests/health.test.ts (1 test) 77ms
- ✓ tests/style.test.ts (6 tests) 515ms
- ✓ tests/backend-http-completion.test.ts (6 tests) 692ms
- ✓ tests/portraits.test.ts (7 tests) 731ms
- ✓ tests/identity-projects.test.ts (11 tests) 752ms
- ✓ tests/characters.test.ts (11 tests) 846ms
- ✓ tests/chapters.test.ts (11 tests) 1000ms
- ✓ tests/illustrations.test.ts (9 tests) 1026ms
+ ✓ tests/pipeline.test.ts (5 tests) 223ms
+ ✓ tests/pipeline-reliability.test.ts (6 tests) 232ms
+ ✓ tests/health.test.ts (1 test) 91ms
+ ✓ tests/style.test.ts (6 tests) 553ms
+ ✓ tests/backend-http-completion.test.ts (6 tests) 704ms
+ ✓ tests/portraits.test.ts (7 tests) 723ms
+ ✓ tests/identity-projects.test.ts (11 tests) 742ms
+ ✓ tests/characters.test.ts (11 tests) 854ms
+ ✓ tests/chapters.test.ts (11 tests) 1040ms
+ ✓ tests/illustrations.test.ts (9 tests) 1093ms
 
  Test Files  10 passed (10)
       Tests  73 passed (73)
-   Start at  17:36:45
-   Duration  2.62s (transform 1000ms, setup 0ms, collect 8.59s, tests 6.16s, environment 4ms, prepare 2.31s)
+   Start at  17:44:55
+   Duration  2.68s (transform 760ms, setup 0ms, collect 8.01s, tests 6.26s, environment 3ms, prepare 2.39s)
 ```
