@@ -1,11 +1,5 @@
 # Book Illustration Studio
 
-Book Illustration Studio is a local-only web application for the Gradion Software Engineering Intern assessment. A user signs in with a name and email, creates a project from pasted book text or a `.txt` file, and explicitly advances it through five Gemini-assisted stages:
-
-`Style → Characters → Portraits → Chapters → Illustrations`
-
-The application preserves progress, generated output, and retryable failures so a project can be reopened after a refresh, sign-out, or backend restart.
-
 ## Technology
 
 - React, Vite, and TypeScript in `frontend/`
