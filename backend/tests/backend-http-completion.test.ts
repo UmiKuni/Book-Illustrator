@@ -158,6 +158,85 @@ function startStyleDirectly(projectId: string): void {
   store.close();
 }
 
+describe("complete project pipeline", () => {
+  it("persists a completed five-step project and reopens it after application restart", async () => {
+    context = createApp({ dataDirectory, geminiProvider: fakeGemini });
+    const firstAgent = request.agent(context.app);
+    const session = await signIn(firstAgent);
+    const projectId = await createProject(firstAgent);
+
+    await completePipeline(firstAgent, projectId);
+
+    const completed = await firstAgent.get(`/api/projects/${projectId}`).expect(200);
+    expect(completed.body.project).toMatchObject({
+      id: projectId,
+      title: "The River Bank",
+      bookText: "Once beside the river...",
+      style: "Vintage watercolor",
+      status: "Done",
+      completedSteps: 5,
+      totalSteps: 5,
+      characters: [
+        {
+          position: 0,
+          name: "Mole",
+          portraitState: "SUCCEEDED",
+          portraitMimeType: "image/jpeg",
+        },
+      ],
+      chapters: [
+        {
+          position: 0,
+          name: "The River Bank",
+          illustrationMimeType: "image/png",
+        },
+      ],
+    });
+    expect(completed.body.project.steps.map((step: { state: string }) => step.state)).toEqual([
+      "SUCCEEDED",
+      "SUCCEEDED",
+      "SUCCEEDED",
+      "SUCCEEDED",
+      "SUCCEEDED",
+    ]);
+    expect(fakeGemini.callCount).toBe(9);
+
+    context.close();
+    context = createApp({ dataDirectory, geminiProvider: fakeGemini });
+    const resumedAgent = request.agent(context.app);
+    await signIn(resumedAgent);
+
+    const reopened = await resumedAgent.get(`/api/projects/${projectId}`).expect(200);
+    expect(reopened.body.project).toEqual(completed.body.project);
+    expect(fakeGemini.callCount).toBe(9);
+
+    const reader = new LocalStore(dataDirectory);
+    try {
+      const userId = session.body.user.id as string;
+      expect(reader.getStyleProject(userId, projectId)).toMatchObject({
+        geminiBookUri: "gemini://book",
+        bookInteractionId: "book-interaction",
+        styleInteractionId: "style-interaction",
+      });
+      expect(reader.getCharacterProject(userId, projectId)).toMatchObject({
+        characterInteractionId: "characters-interaction",
+      });
+      expect(reader.getPortraitProject(userId, projectId)).toMatchObject({
+        imageInteractionId: "portrait-interaction",
+      });
+      expect(reader.getChapterProject(userId, projectId)).toMatchObject({
+        chapterInteractionId: "chapter-interaction",
+      });
+      expect(reader.getIllustrationProject(userId, projectId)).toMatchObject({
+        imageInteractionId: "portrait-interaction",
+        chapterImageContextId: "chapter-image-context",
+      });
+    } finally {
+      reader.close();
+    }
+  });
+});
+
 describe("pipeline recovery HTTP API", () => {
   it("allows only the owner to recover stale running work without calling Gemini", async () => {
     context = createApp({ dataDirectory, geminiProvider: fakeGemini, staleAfterMs: 0 });

@@ -168,7 +168,7 @@ function ApplicationError({ message, onRetry }: { message: string | null; onRetr
     <main className="centered-state">
       <span className="eyebrow">Application unavailable</span>
       <h1>We could not open the studio.</h1>
-      <p>{message ?? 'The project library could not be loaded.'}</p>
+      <p role="alert">{message ?? 'The project library could not be loaded.'}</p>
       <button className="button button-primary" type="button" onClick={onRetry}>Try again</button>
     </main>
   )

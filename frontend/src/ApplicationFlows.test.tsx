@@ -93,8 +93,11 @@ function capturePollingInterval() {
   return {
     timerId: () => setIntervalSpy.mock.results[intervalCallIndex()]?.value,
     run: async () => {
-      const callback = setIntervalSpy.mock.calls[intervalCallIndex()]?.[0]
-      expect(callback).toBeDefined()
+      let callback: TimerHandler | undefined
+      await waitFor(() => {
+        callback = setIntervalSpy.mock.calls[intervalCallIndex()]?.[0]
+        expect(callback).toBeDefined()
+      })
       await act(async () => {
         if (typeof callback === 'function') callback()
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
@@ -121,6 +124,29 @@ describe('application flows', () => {
     expect(await screen.findByRole('heading', { name: 'Open your studio' })).toBeInTheDocument()
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
+  })
+
+  it('announces a bootstrap failure and can retry into the Project Library', async () => {
+    let sessionReads = 0
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (isSessionRead(input, init)) {
+        sessionReads += 1
+        return sessionReads === 1
+          ? response({ error: 'The local backend is unavailable.' }, { status: 503 })
+          : response({ user: sessionUser })
+      }
+      if (String(input) === '/api/projects') return response({ projects: [draftProject] })
+      throw new Error(`Unexpected request: ${String(input)}`)
+    }))
+
+    visit('/projects')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The local backend is unavailable.')
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByRole('heading', { name: 'Project Library' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'The Lantern Atlas' })).toBeInTheDocument()
+    expect(sessionReads).toBe(2)
   })
 
   it('rejects invalid Identity input without starting a session request', async () => {
@@ -260,7 +286,13 @@ describe('application flows', () => {
     visit('/projects/new')
 
     await screen.findByRole('heading', { name: 'Start an illustration project' })
-    fireEvent.click(screen.getByRole('tab', { name: 'Upload .txt' }))
+    const pasteTab = screen.getByRole('tab', { name: 'Paste text' })
+    pasteTab.focus()
+    fireEvent.keyDown(pasteTab, { key: 'ArrowRight' })
+    const uploadTab = screen.getByRole('tab', { name: 'Upload .txt' })
+    expect(uploadTab).toHaveAttribute('aria-selected', 'true')
+    expect(uploadTab).toHaveFocus()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'upload-book-tab')
     fireEvent.change(screen.getByLabelText('Project title'), { target: { value: 'A New Story' } })
     const file = new File(['A readable story.'], 'story.txt', { type: 'text/plain' })
     fireEvent.change(screen.getByLabelText('Choose a .txt book'), { target: { files: [file] } })

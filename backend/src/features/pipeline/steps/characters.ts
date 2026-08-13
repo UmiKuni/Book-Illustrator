@@ -60,6 +60,10 @@ export function parseCharacterOutput(outputText: string | undefined): Character[
     throw new CharacterOutputError("Gemini character output must be an array.");
   }
 
+  if (output.length === 0) {
+    throw new CharacterOutputError("Gemini did not return a usable character record.");
+  }
+
   return output.slice(0, MAX_CHARACTERS).map((record, position) => {
     if (typeof record !== "object" || record === null || Array.isArray(record)) {
       throw new CharacterOutputError(`Character ${position + 1} must be an object.`);

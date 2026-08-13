@@ -119,6 +119,26 @@ afterEach(() => {
 })
 
 describe('project pipeline', () => {
+  it('announces a project-load failure and recovers when the user retries', async () => {
+    let projectReads = 0
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => {
+      projectReads += 1
+      return projectReads === 1
+        ? response({ error: 'Project storage is temporarily unavailable.' }, 503)
+        : response({ project: project() })
+    }))
+
+    renderProjectDetail()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Project storage is temporarily unavailable.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'The Lantern Atlas' })).toBeInTheDocument()
+    expect(projectReads).toBe(2)
+  })
+
   it('groups persisted output into three tabs while keeping the five-step progress visible', async () => {
     const value = project({
       completedSteps: 4,

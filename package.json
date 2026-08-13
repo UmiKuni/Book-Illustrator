@@ -1,13 +1,16 @@
 {
   "name": "technical_assignment",
   "version": "1.0.0",
-  "description": "",
+  "description": "Local-only Book Illustration Studio for the Gradion software engineering assessment",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "npm run test --workspaces"
+    "dev": "concurrently --kill-others-on-fail --names backend,frontend \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "test": "npm run test --workspaces",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspace frontend"
   },
   "keywords": [],
   "author": "",
@@ -17,5 +20,8 @@
   "workspaces": [
     "frontend",
     "backend"
-  ]
+  ],
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
 }

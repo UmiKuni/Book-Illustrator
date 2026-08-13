@@ -185,8 +185,8 @@ export function ProjectDetailPage({ projectId, onUnauthorized }: ProjectDetailPa
       <main className="centered-state">
         <span className="eyebrow">Project unavailable</span>
         <h1>We could not open this story.</h1>
-        <p>{fatalError ?? 'The project could not be loaded.'}</p>
-        <button className="button button-primary" onClick={() => void refreshProject()}>
+        <p role="alert">{fatalError ?? 'The project could not be loaded.'}</p>
+        <button className="button button-primary" type="button" onClick={() => void refreshProject()}>
           Try again
         </button>
       </main>

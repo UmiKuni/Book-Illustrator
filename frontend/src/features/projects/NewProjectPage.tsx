@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../../shared/api/client'
@@ -28,12 +28,33 @@ export function NewProjectPage({ onProjectCreated, onUnauthorized }: NewProjectP
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const sourceTabs = useRef<Record<BookInputMode, HTMLButtonElement | null>>({
+    paste: null,
+    upload: null,
+  })
 
   function selectMode(nextMode: BookInputMode) {
     if (submitting) return
     setMode(nextMode)
     setFieldErrors((current) => ({ title: current.title }))
     setSubmitError(null)
+  }
+
+  function handleSourceTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentMode: BookInputMode,
+  ) {
+    let nextMode: BookInputMode | undefined
+    if (event.key === 'Home') nextMode = 'paste'
+    if (event.key === 'End') nextMode = 'upload'
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      nextMode = currentMode === 'paste' ? 'upload' : 'paste'
+    }
+    if (!nextMode) return
+
+    event.preventDefault()
+    selectMode(nextMode)
+    sourceTabs.current[nextMode]?.focus()
   }
 
   function selectFile(file: File | null) {
@@ -126,29 +147,42 @@ export function NewProjectPage({ onProjectCreated, onUnauthorized }: NewProjectP
           <legend>Book source</legend>
           <div className="source-tabs" role="tablist" aria-label="Book input method">
             <button
+              id="paste-book-tab"
+              ref={(node) => { sourceTabs.current.paste = node }}
               className={mode === 'paste' ? 'active' : ''}
               type="button"
               role="tab"
               aria-selected={mode === 'paste'}
               aria-controls="paste-book-panel"
+              tabIndex={mode === 'paste' ? 0 : -1}
               onClick={() => selectMode('paste')}
+              onKeyDown={(event) => handleSourceTabKeyDown(event, 'paste')}
             >
               Paste text
             </button>
             <button
+              id="upload-book-tab"
+              ref={(node) => { sourceTabs.current.upload = node }}
               className={mode === 'upload' ? 'active' : ''}
               type="button"
               role="tab"
               aria-selected={mode === 'upload'}
               aria-controls="upload-book-panel"
+              tabIndex={mode === 'upload' ? 0 : -1}
               onClick={() => selectMode('upload')}
+              onKeyDown={(event) => handleSourceTabKeyDown(event, 'upload')}
             >
               Upload .txt
             </button>
           </div>
 
           {mode === 'paste' ? (
-            <div className={`book-source-panel form-field ${fieldErrors.book ? 'field-invalid' : ''}`} id="paste-book-panel" role="tabpanel">
+            <div
+              className={`book-source-panel form-field ${fieldErrors.book ? 'field-invalid' : ''}`}
+              id="paste-book-panel"
+              role="tabpanel"
+              aria-labelledby="paste-book-tab"
+            >
               <label htmlFor="book-text-input">Complete book text</label>
               <textarea
                 id="book-text-input"
@@ -162,7 +196,12 @@ export function NewProjectPage({ onProjectCreated, onUnauthorized }: NewProjectP
               <small id="book-text-help">The complete text is stored locally and remains readable throughout the project.</small>
             </div>
           ) : (
-            <div className={`book-source-panel upload-panel ${fieldErrors.book ? 'field-invalid' : ''}`} id="upload-book-panel" role="tabpanel">
+            <div
+              className={`book-source-panel upload-panel ${fieldErrors.book ? 'field-invalid' : ''}`}
+              id="upload-book-panel"
+              role="tabpanel"
+              aria-labelledby="upload-book-tab"
+            >
               <span className="upload-symbol" aria-hidden="true">TXT</span>
               <label htmlFor="book-file-input">Choose a .txt book</label>
               <p>The backend verifies the file's size, UTF-8 readability, extension, and content.</p>

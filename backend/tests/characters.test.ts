@@ -259,6 +259,7 @@ describe("Gemini character generation", () => {
     ["missing output", undefined],
     ["malformed JSON", "[{"],
     ["a wrapper object", JSON.stringify({ characters: [] })],
+    ["an empty character array", JSON.stringify([])],
     [
       "a malformed retained record",
       JSON.stringify([

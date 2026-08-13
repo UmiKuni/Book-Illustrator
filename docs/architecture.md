@@ -32,13 +32,15 @@ The claim is committed before the long call, so a process crash may leave persis
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/session` | Validate name/email; create or resume the user and set an HTTP-only local-session cookie. |
+| `GET` | `/api/session` | Return the current authenticated local user. |
 | `DELETE` | `/api/session` | Sign out. |
 | `GET` | `/api/projects` | Return the current user's project summaries. |
 | `POST` | `/api/projects` | Create a project from title plus pasted text or multipart `.txt`. |
 | `GET` | `/api/projects/:id` | Return full persisted project and item/step state. |
 | `POST` | `/api/projects/:id/steps/:step/run` | Claim and begin the current step; accepts optional `style` only for `style`. |
 | `POST` | `/api/projects/:id/steps/:step/recover` | Mark a stale in-progress step interrupted. |
-| `GET` | `/api/projects/:id/media/*` | Serve only authorized local book/image files. |
+| `GET` | `/api/projects/:id/characters/:position/portrait` | Serve a persisted portrait only to the project owner. |
+| `GET` | `/api/projects/:id/chapters/:position/illustration` | Serve a persisted illustration only to the project owner. |
 
 The client polls `GET /api/projects/:id` while any step or image item is running. This is adequate for a local assessment; SSE/WebSockets are bonus work.
 
