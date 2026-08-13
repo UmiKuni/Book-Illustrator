@@ -20,9 +20,9 @@ An early shortcut was to prevent duplicate work with disabled frontend buttons o
 
 AI initially treated the model IDs observed in the verified notebook flow as if they were permanent implementation requirements. I corrected that distinction: the current defaults are `gemini-3.6-flash` for text and `gemini-3.1-flash-lite-image` for images, but both come from backend environment variables. This keeps the verified text/image mechanics intact while allowing an account to use available compatible models. The cost is one more pre-demo configuration check, and a changed model can still expose provider behavior that the fake tests cannot verify.
 
-## Defer CI until hardening
+## Defer CI until final verification
 
-I proposed adding GitHub Actions before continuing with the pipeline concurrency work so that every commit could be automatically verified. AI pushed back that CI would add limited value while the test suite and the core failure and concurrency paths were still evolving, and suggested keeping the local one-command test workflow as the verification gate. I agreed, and revisited the choice during final hardening; CI remains deferred because it is optional and live-provider verification is the more important unresolved risk. The cost is that submission verification depends on the recorded local commands rather than a remote status check.
+I proposed adding GitHub Actions before continuing with the pipeline concurrency work so that every commit could be automatically verified. AI pushed back that CI would add limited value while the test suite and the core failure and concurrency paths were still evolving, and suggested keeping the local one-command test workflow as the verification gate. I agreed to defer it until the required behavior and final scripts were stable. For submission, I added one minimal Ubuntu job that runs the same install, test, build, and lint commands without Gemini credentials. The cost is maintaining one additional workflow and its Node version, but it now verifies the finished repository without complicating earlier feature work.
 
 ## What I would build with one more day
 
