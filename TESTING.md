@@ -31,13 +31,13 @@ $env:NO_COLOR='1'; npm test
 
  RUN  v3.2.7 F:/technical_assignment/frontend
 
- ✓ src/App.test.tsx (11 tests) 911ms
- ✓ src/ApplicationFlows.test.tsx (15 tests) 1073ms
+ ✓ src/App.test.tsx (11 tests) 978ms
+ ✓ src/ApplicationFlows.test.tsx (15 tests) 1230ms
 
  Test Files  2 passed (2)
       Tests  26 passed (26)
-   Start at  17:25:53
-   Duration  3.08s (transform 272ms, setup 443ms, collect 815ms, tests 1.98s, environment 1.69s, prepare 384ms)
+   Start at  17:36:41
+   Duration  3.38s (transform 292ms, setup 480ms, collect 880ms, tests 2.21s, environment 1.81s, prepare 418ms)
 
 
 > backend@1.0.0 test
@@ -46,20 +46,19 @@ $env:NO_COLOR='1'; npm test
 
  RUN  v3.2.7 F:/technical_assignment/backend
 
- ✓ tests/pipeline.test.ts (5 tests) 227ms
- ✓ tests/pipeline-reliability.test.ts (6 tests) 246ms
- ✓ tests/health.test.ts (1 test) 99ms
- ✓ tests/style.test.ts (6 tests) 673ms
- ✓ tests/portraits.test.ts (7 tests) 831ms
- ✓ tests/backend-http-completion.test.ts (6 tests) 903ms
-   ✓ complete project pipeline > persists a completed five-step project and reopens it after application restart  388ms
- ✓ tests/characters.test.ts (11 tests) 972ms
- ✓ tests/identity-projects.test.ts (11 tests) 960ms
- ✓ tests/chapters.test.ts (11 tests) 1224ms
- ✓ tests/illustrations.test.ts (9 tests) 1262ms
+ ✓ tests/pipeline.test.ts (5 tests) 247ms
+ ✓ tests/pipeline-reliability.test.ts (6 tests) 271ms
+ ✓ tests/health.test.ts (1 test) 77ms
+ ✓ tests/style.test.ts (6 tests) 515ms
+ ✓ tests/backend-http-completion.test.ts (6 tests) 692ms
+ ✓ tests/portraits.test.ts (7 tests) 731ms
+ ✓ tests/identity-projects.test.ts (11 tests) 752ms
+ ✓ tests/characters.test.ts (11 tests) 846ms
+ ✓ tests/chapters.test.ts (11 tests) 1000ms
+ ✓ tests/illustrations.test.ts (9 tests) 1026ms
 
  Test Files  10 passed (10)
       Tests  73 passed (73)
-   Start at  17:25:57
-   Duration  3.32s (transform 1.35s, setup 0ms, collect 10.73s, tests 7.40s, environment 5ms, prepare 2.78s)
+   Start at  17:36:45
+   Duration  2.62s (transform 1000ms, setup 0ms, collect 8.59s, tests 6.16s, environment 4ms, prepare 2.31s)
 ```
